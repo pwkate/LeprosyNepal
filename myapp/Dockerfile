@@ -34,7 +34,7 @@ COPY indtable.csv indtable.csv
 RUN R -e "renv::restore()"
 
 # Expose the Shiny application port
-EXPOSE 7860
+EXPOSE 8080
 
 # Run the R Shiny app
-CMD ["R", "-e", "shiny::runApp('/home/shiny-app', host='0.0.0.0', port=7860)"]
+CMD ["R", "-e", "shiny::runApp('/home/shiny-app', host='0.0.0.0', port=8080)"]
