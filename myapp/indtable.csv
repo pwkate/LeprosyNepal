@@ -1,0 +1,35 @@
+rcode,names
+i_13_1,13.1 Patient at end of last month
+i_13_2,13.2 New cases
+i_13_3,13.3 Relapsed cases
+i_13_4,13.4 Restarter
+i_13_5,13.5 Transferred in
+i_13_6,13.6 Other addition
+i_13_7,13.7 Total patients (13.1 to 13.6)
+i_13_8,13.8 Total patients received services this month
+i_13_9,13.9 RFT
+i_13_10,13.10 Transfer out
+i_13_11,13.11 Lost to follow up
+i_13_12,13.12 Other deduction
+i_13_13,13.13 Total deduction (13.9 to 13.13)
+i_13_14,13.14 Patient at the end (13.7 - 13.13)
+i_13_15,13.15 Children among new (13.2)
+i_13_16,13.16 Total children (new and old)
+i_13_17,13.17 Smear tested among new (13.2)
+i_13_18,13.18 Smear positive among tested
+i_13_19_1,13.19 Lepra reaction:Type 1
+i_13_19_2,13.19 Lepra reaction:Type 2
+i_13_19_3,13.19 Lepra reaction:Neuritis
+i_13_21,13.21 Number of Index cases for contact examination
+i_13_22,13.22 Number of index cases whose contact examination done
+i_13_23,13.23 Number of contacts for contact examination
+i_13_24,13.24 Number of contacts with contact examination done
+i_13_25,13.25 New cases detected from contact examination
+d_n_0,Among new cases:DG0
+d_n_1,Among new cases:DG1
+d_n_2,Among new cases:DG2
+d_n_x,Among new cases:Not Done
+d_nc_0,Among new child cases:DG0
+d_nc_1,Among new child cases:DG1
+d_nc_2,Among new child cases:DG2
+d_nc_x,Among new child cases:Not Done
