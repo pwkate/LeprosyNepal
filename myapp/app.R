@@ -23,7 +23,7 @@ readRenviron(".Renviron")
 
 ####Specify the application port
 options(shiny.host = "0.0.0.0")
-options(shiny.port=7860)
+options(shiny.port=8080)
 ###########################
 ou<-read.csv("code_list.csv")
 
