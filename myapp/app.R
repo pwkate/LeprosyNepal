@@ -18,6 +18,7 @@ library(openxlsx)
 library(fpc)
 library(osmdata)
 library(htmltools)
+library(assertthat)
 
 readRenviron(".Renviron")
 
@@ -34,13 +35,13 @@ tree<-create_tree(
 #####HEADER###############
 header<-dashboardHeader(
   titleWidth = 200,
-  title = "Surveillance",
+  title = tags$img(src = "ne-flag.png", height = "30px"),
   leftUi = tagList(
     dropdownBlock(
       id="ymrange",
       title="Patient Cohort",
       icon=icon("calendar"),
-      badgeStatus = "success",
+      badgeStatus = NULL,
       fluidRow(
         column(6,
                div(
@@ -122,6 +123,7 @@ header<-dashboardHeader(
       id="locations",
       title = "Location Selection",
       icon=icon("location-dot",lib = "font-awesome"),
+      badgeStatus = NULL,
       treeInput(
         inputId = "ous",
         label = "Administrive Divisions:",
@@ -242,6 +244,7 @@ body<-dashboardBody(
       background-color: transparent !important;
       border-left: none !important;  /* Remove the left border */
       }
+      
       "
     ))
   ),
@@ -260,11 +263,20 @@ body<-dashboardBody(
             fluidRow(
               class = "equal-height",
               box(width = 8, height = "100%",
+                  title = "New Detections",
                   leafletOutput("newmap"),
                   id="dash-newmap",
                   collapsible = T,
                   closable = F),
               box(width = 4,height = "100%",
+                  title = tagList(
+                    actionButton("expand_button", "Expand/Collapse Province", style = "padding: 2px 8px; font-size: 11px;")
+                  ),
+                  extendShinyjs(text = "
+                  shinyjs.toggleAllRows = function() {
+                  Reactable.toggleAllRowsExpanded('cars-expansion-table');
+                  }", functions = c("toggleAllRows")),
+                  #actionButton("expand_button", "Expand/Collapse All"),
                   reactableOutput("newtable"),
                   id="dash-newtable",
                   collapsible = T,
@@ -446,14 +458,21 @@ body<-dashboardBody(
                          id="d2_info",
                          collapsible = T,
                          closable = F,
-                         p(strong("1. Log in to HMIS/DHIS here")),
-                         p(em("We will not retain any sensitive or authorization information on this platform.")),
+                         p(strong("1. Log in to HMIS/DHIS2 here")),
+                         p(em("We will not retain any sensitive or HMIS credential information on this platform.")),
                          p(strong("2. Select your working municipatities from the above dropdown [Select Locations] (mulitiples are allowed).")),
                          p(code("Please select the same municipalities STRICTLY according to your access permission in HMIS/DHIS2.")),
-                         p(strong("3. Select the monthly period from the [Actin Box]. Only one-month period is allowed.")),
-                         p(em("The [Date Range: To] will be automatically adjusted to the same as your selection of start month")),
-                         p(strong("3.Click [Preview] to view the data values and then click [Send] to send to HMIS/DHIS2 server"))
+                         p(strong("3. Select the monthly period from the [Actin Box].")),
+                         p(em("Only one-month period is allowed.")),
+                         p(strong("3.Click [Preview] to view the data values and then click [Send] to send to HMIS/DHIS2 server."))
                      )
+              )
+            ),
+            fluidRow(
+              column(width = 12,
+                     uiOutput("municipality_filter_ui"),
+                     reactableOutput(outputId = "d2preview")    
+                         
               )
             )
     ),
@@ -559,7 +578,6 @@ ui<-dashboardPage(header,sidebar,body,controlbar,skin = "blue-light")
 #########################
 
 server <- function(input, output, session) {
-  
   
   credentials<-readRDS("users.RDS")
   # Reactive value to track if the user is logged in
@@ -996,7 +1014,9 @@ server <- function(input, output, session) {
     # Render the leaflet map
     l <- leaflet() %>%
       setView(lng = 84.1240, lat = 28.3949, zoom = 7) %>%
-      addTiles()
+      addTiles(group = "OpenStreetMap") %>% 
+      addProviderTiles("Esri.WorldImagery",group="Esri.WorldImagery")%>% 
+      addLayersControl(baseGroups = c("OpenStreetMap", "Esri.WorldImagery"))
     
     if (nrow(dt) > 0) {
       l <- l %>%
@@ -1057,8 +1077,13 @@ server <- function(input, output, session) {
               paginateSubRows = TRUE,
               resizable = TRUE,
               height = 400,
+              elementId = "cars-expansion-table"
     )
     
+  })
+  
+  observeEvent(input$expand_button, {
+    js$toggleAllRows()
   })
   
   ################################################################################################
@@ -1219,16 +1244,19 @@ server <- function(input, output, session) {
     req(kbdata()$reg_nedate, kbdata()$out_nedate)
     
     se_ous<-as.character(input$ous)
-    if(length(input$ous)==0){
-      kbdt<-kbdata()
-    }else{
-      kbdt<-kbdata() %>% 
+    
+    kbdt <- kbdata()
+    
+    if (length(se_ous) > 0) {
+      kbdt <- kbdt %>%
         filter(muni_code %in% se_ous)
     }
     
-    if (nrow(kbdt)==0){leaflet() %>%
+    if (nrow(kbdt)==0){
+        leaflet() %>%
         setView(lng = 84.1240, lat = 28.3949, zoom = 7) %>% 
-        addTiles()} else {
+        addTiles()
+      } else {
           
           kbdt<-kbdt %>% 
             mutate(registration_date := as.Date(registration_date),
@@ -1265,82 +1293,89 @@ server <- function(input, output, session) {
           
           fudt(fu)
           
-          meanx<-mean(fu$lng)
-          meany<-mean(fu$lat)
-          #nepal_center <- c(28.3949, 84.1240)
-          
-          l <- leaflet() %>%
-            setView(lng = meanx, lat = meany, zoom = 12) %>% 
-            addTiles()
-          
-          getColor <- function(cat) {
-            sapply(cat, function(x) {
-              if (x == 1) {
-                return("red") 
-              } else if (x ==2) {
-                return("pink")
-              } else if (x == 3) {
-                return("purple")
-              } else if (x == 4) {
-                return("orange")
-              } else {
-                return("green")
-              }
-            })
-          }
-          
-          icons <- awesomeIcons(
-            icon = 'ios-close',
-            iconColor = 'black',
-            library = 'ion',
-            markerColor = ~getColor(cat))
-          
-          cat.df <- split(fu,fu$cat)
-          
-          name<-matrix(nrow=5,ncol=2)
-          name[,1]<-seq(1,5)
-          name[,2]<-c("Contact Not done + Outcome Overdue",
-                      "Contact Not done + Outcome Complete",
-                      "Contact Done + Outcome Overdue", 
-                      "Contact Not done + Under Treatment", 
-                      "Contact Done + Under Treatment")
-          
-          names(cat.df)<-name[,2][name[,1]%in%unique(fu$cat)]
-          
-          names(cat.df) %>%
-            purrr::walk( function(df) {
-              l <<- l %>%
-                addAwesomeMarkers(
-                  data=cat.df[[df]], lng=~lng, lat=~lat,
-                  label=~uid,
-                  popup = ~popup,
-                  group=df,
-                  icon=icons#,
-                  #clusterOptions = markerClusterOptions()
-                )
-            })
-          
-          category<-c("Contact Not done + Outcome Overdue",
-                      "Contact Not done + Outcome Complete",
-                      "Contact Done + Outcome Overdue", 
-                      "Contact Not done + Under Treatment", 
-                      "Contact Done + Under Treatment")
-          counts<-c(sum(fu$cat==1),sum(fu$cat==2),sum(fu$cat==3),sum(fu$cat==4),sum(fu$cat==5))
-          
-          labels_with_counts <- paste0(category," (", counts, ")")
-          
-          
-          l %>%
-            addLayersControl(
-              overlayGroups=names(cat.df),
-              options = layersControlOptions(collapsed = T))%>%
-            addLegend(
-              position = "bottomleft",
-              title = "Markers",
-              colors = c("red", "pink","purple", "orange", "green"),
-              labels = labels_with_counts
-            )
-        }
+          if(nrow(fu)==0){
+            
+            leaflet() %>%
+              setView(lng = 84.1240, lat = 28.3949, zoom = 7) %>% 
+              addTiles()
+            
+          }else{
+            meanx<-mean(fu$lng)
+            meany<-mean(fu$lat)
+            #nepal_center <- c(28.3949, 84.1240)
+            
+            l <- leaflet() %>%
+              setView(lng = meanx, lat = meany, zoom = 7) %>% 
+              addTiles()
+            
+            getColor <- function(cat) {
+              sapply(cat, function(x) {
+                if (x == 1) {
+                  return("red") 
+                } else if (x ==2) {
+                  return("pink")
+                } else if (x == 3) {
+                  return("purple")
+                } else if (x == 4) {
+                  return("orange")
+                } else {
+                  return("green")
+                }
+              })
+            }
+            
+            icons <- awesomeIcons(
+              icon = 'ios-close',
+              iconColor = 'black',
+              library = 'ion',
+              markerColor = ~getColor(cat))
+            
+            cat.df <- split(fu,fu$cat)
+            
+            name<-matrix(nrow=5,ncol=2)
+            name[,1]<-seq(1,5)
+            name[,2]<-c("Contact Not done + Outcome Overdue",
+                        "Contact Not done + Outcome Complete",
+                        "Contact Done + Outcome Overdue", 
+                        "Contact Not done + Under Treatment", 
+                        "Contact Done + Under Treatment")
+            
+            names(cat.df)<-name[,2][name[,1]%in%unique(fu$cat)]
+            
+            names(cat.df) %>%
+              purrr::walk( function(df) {
+                l <<- l %>%
+                  addAwesomeMarkers(
+                    data=cat.df[[df]], lng=~lng, lat=~lat,
+                    label=~uid,
+                    popup = ~popup,
+                    group=df,
+                    icon=icons#,
+                    #clusterOptions = markerClusterOptions()
+                  )
+              })
+            
+            category<-c("Contact Not done + Outcome Overdue",
+                        "Contact Not done + Outcome Complete",
+                        "Contact Done + Outcome Overdue", 
+                        "Contact Not done + Under Treatment", 
+                        "Contact Done + Under Treatment")
+            counts<-c(sum(fu$cat==1),sum(fu$cat==2),sum(fu$cat==3),sum(fu$cat==4),sum(fu$cat==5))
+            
+            labels_with_counts <- paste0(category," (", counts, ")")
+            
+            
+            l %>%
+              addLayersControl(
+                overlayGroups=names(cat.df),
+                options = layersControlOptions(collapsed = T))%>%
+              addLegend(
+                position = "bottomleft",
+                title = "Markers",
+                colors = c("red", "pink","purple", "orange", "green"),
+                labels = labels_with_counts
+              )
+          }}
   })
   
   
@@ -1384,7 +1419,7 @@ server <- function(input, output, session) {
       tagList(
         br(),
         h4("1. By default, the follow-up list includes all patients up to NOW; otherwise, select the cohort range on the left"),
-        h4("2. Select your locations on the left (by Province/District/Municipality)"),
+        h4("2. Select locations from the above dropdown menu [Select Locations]"),
         h4("3. By default, ALL types of follow-up action are included"),
         h4("4. Click [Generate] to preview the table"),
         h4("5. Click [Table Download] to download an excel file"),
@@ -1535,8 +1570,6 @@ server <- function(input, output, session) {
       fuclear(TRUE)}
   })
   
-  
-  
   output$fuload <- downloadHandler(
     filename = function() {
       paste("Follow-up_List_", format(Sys.time(), "%Y-%m-%dT%H%M%S"),".xlsx", sep = "")
@@ -1585,7 +1618,7 @@ server <- function(input, output, session) {
       tagList(
         br(),
         h4("1. Monthly report of THIS YEAR is set by default"),
-        h4("2. Select your locations on the left (by Province/District/Municipality)"),
+        h4("2. Select locations from the above dropdown menu [Select Locations]"),
         h5("#The data will be calculated at the Municipality level but you can select mulitiple Municipalities by different levels."),
         h4("3. Click [Generate] to view the table"),
         h4("4. Click [Download] to download an excel file"),
@@ -1638,7 +1671,11 @@ server <- function(input, output, session) {
           filter(muni_code %in% se_ous)
         
         period<-input$retype %>% rev()
+          
         period_re(period)
+        
+        #print(period)
+        #print(class(period))
         
         grouping_cols <- if (input$replevel == "1") {
           c("province", "class_gen_f")
@@ -1647,6 +1684,7 @@ server <- function(input, output, session) {
         } else {
           c("muni_code", "class_gen_f")
         }
+        print(grouping_cols)
         
         if (input$replevel == "3") {
           skeleton <- expand.grid(
@@ -1686,48 +1724,46 @@ server <- function(input, output, session) {
             group_by(!!!rlang::syms(grouping_cols)) %>% 
             summarise(
               ###
-              i_13_1 = sum( reg_mth<p & treatment_outcome == "4"),
-              i_13_2 = sum( reg_mth==p & registered_as == "1"), #NEW
-              i_13_3 = sum( reg_mth==p & registered_as == "4"), #Relapsed
-              i_13_4 = sum( reg_mth==p & registered_as == "3"), #Restart
-              i_13_5 = sum( reg_mth==p & registered_as == "2"), #in
-              i_13_6 = sum( reg_mth==p & registered_as == "5"), #other
-              i_13_7 = i_13_1+i_13_2+i_13_3+i_13_4+i_13_5+i_13_6,
-              i_13_8 = i_13_7, 
+              i_13_1 = sum(reg_mth < p & treatment_outcome == "4", na.rm = TRUE),
+              i_13_2 = sum(reg_mth == p & registered_as == "1", na.rm = TRUE), # NEW
+              i_13_3 = sum(reg_mth == p & registered_as == "4", na.rm = TRUE), # Relapsed
+              i_13_4 = sum(reg_mth == p & registered_as == "3", na.rm = TRUE), # Restart
+              i_13_5 = sum(reg_mth == p & registered_as == "2", na.rm = TRUE), # in
+              i_13_6 = sum(reg_mth == p & registered_as == "5", na.rm = TRUE), # other
+              i_13_7 = i_13_1 + i_13_2 + i_13_3 + i_13_4 + i_13_5 + i_13_6,
+              i_13_8 = i_13_7,
               ###
-              i_13_9 = sum( out_mth==p & treatment_outcome == "1" ),#RFT
-              i_13_10 = sum( out_mth==p & treatment_outcome == "2" ),#T-OUT
-              #i_13_11 = sum( out_mth==p & treatment_outcome == "3" ),#Defaulter
-              i_13_11 = sum( out_mth==p & treatment_outcome == "5" ),#LossFU
-              i_13_12 = sum( out_mth==p & treatment_outcome %in% c("3","6") ),#Other
-              i_13_13 = i_13_9+i_13_10+i_13_11+i_13_12, #TOTAL DEDUCTED
-              i_13_14 = i_13_7-i_13_13,
+              i_13_9 = sum(out_mth == p & treatment_outcome == "1", na.rm = TRUE), # RFT
+              i_13_10 = sum(out_mth == p & treatment_outcome == "2", na.rm = TRUE), # T-OUT
+              i_13_11 = sum(out_mth == p & treatment_outcome == "5", na.rm = TRUE), # LossFU
+              i_13_12 = sum(out_mth == p & treatment_outcome %in% c("3", "6"), na.rm = TRUE), # Other
+              i_13_13 = i_13_9 + i_13_10 + i_13_11 + i_13_12, # TOTAL DEDUCTED
+              i_13_14 = i_13_7 - i_13_13,
               ###
-              i_13_15 = sum( reg_mth==p & age<15 & registered_as == "1"),
-              i_13_16 = sum( reg_mth==p & age<15 & treatment_outcome =="4"),
-              i_13_17 = sum( reg_mth==p & (skin_smear_test %in% c("1","2"))  & registered_as == "1"),
-              i_13_18 = sum( reg_mth==p & skin_smear_test == "1" & registered_as == "1" ),
+              i_13_15 = sum(reg_mth == p & age < 15 & registered_as == "1", na.rm = TRUE),
+              i_13_16 = sum(reg_mth == p & age < 15 & treatment_outcome == "4", na.rm = TRUE),
+              i_13_17 = sum(reg_mth == p & (skin_smear_test %in% c("1", "2")) & registered_as == "1", na.rm = TRUE),
+              i_13_18 = sum(reg_mth == p & skin_smear_test == "1" & registered_as == "1", na.rm = TRUE),
               ###
-              i_13_19_1 = sum( reg_mth==p & lepra_reaction == "1" ),
-              i_13_19_2 = sum( reg_mth==p & lepra_reaction == "2" ),
-              i_13_19_3 = sum( reg_mth==p & lepra_reaction == "3" ),
+              i_13_19_1 = sum(reg_mth == p & lepra_reaction == "1", na.rm = TRUE),
+              i_13_19_2 = sum(reg_mth == p & lepra_reaction == "2", na.rm = TRUE),
+              i_13_19_3 = sum(reg_mth == p & lepra_reaction == "3", na.rm = TRUE),
               ###
-              i_13_21 = sum( reg_mth<p & contact_pep == "0" ),
-              i_13_22 = sum( reg_mth==p & contact_pep == "1" ),
-              i_13_23 = i_13_21*25,
-              i_13_24 = sum ( contact_num[reg_mth == p], na.rm = T ),
-              i_13_25 = sum( reg_mth==p & (registered_as == "1" & case_detection_method %in% c("3","5")) ),
+              i_13_21 = sum(reg_mth < p & contact_pep == "0", na.rm = TRUE),
+              i_13_22 = sum(reg_mth == p & contact_pep == "1", na.rm = TRUE),
+              i_13_23 = i_13_21 * 25,
+              i_13_24 = sum(contact_num[reg_mth == p], na.rm = TRUE),
+              i_13_25 = sum(reg_mth == p & (registered_as == "1" & case_detection_method %in% c("3", "5")), na.rm = TRUE),
               ###
-              d_n_0 = sum( reg_mth==p & (registered_as == "1" & i_who_disability == "0")),
-              d_n_1 = sum( reg_mth==p & (registered_as == "1" & i_who_disability == "1")),
-              d_n_2 = sum( reg_mth==p & (registered_as == "1" & i_who_disability == "2")),
-              d_n_x = sum( reg_mth==p & (registered_as == "1" & is.na(i_who_disability))),
-              
-              d_nc_0 = sum( reg_mth==p & (registered_as == "1" & age<15 & i_who_disability == "0")),
-              d_nc_1 = sum( reg_mth==p & (registered_as == "1" & age<15 & i_who_disability == "1")),
-              d_nc_2 = sum( reg_mth==p & (registered_as == "1" & age<15 & i_who_disability == "2")),
-              d_nc_x = sum( reg_mth==p & (registered_as == "1" & age<15 & is.na(i_who_disability))),
-              ,.groups = 'drop'
+              d_n_0 = sum(reg_mth == p & (registered_as == "1" & i_who_disability == "0"), na.rm = TRUE),
+              d_n_1 = sum(reg_mth == p & (registered_as == "1" & i_who_disability == "1"), na.rm = TRUE),
+              d_n_2 = sum(reg_mth == p & (registered_as == "1" & i_who_disability == "2"), na.rm = TRUE),
+              d_n_x = sum(reg_mth == p & (registered_as == "1" & is.na(i_who_disability)), na.rm = TRUE),
+              d_nc_0 = sum(reg_mth == p & (registered_as == "1" & age < 15 & i_who_disability == "0"), na.rm = TRUE),
+              d_nc_1 = sum(reg_mth == p & (registered_as == "1" & age < 15 & i_who_disability == "1"), na.rm = TRUE),
+              d_nc_2 = sum(reg_mth == p & (registered_as == "1" & age < 15 & i_who_disability == "2"), na.rm = TRUE),
+              d_nc_x = sum(reg_mth == p & (registered_as == "1" & age < 15 & is.na(i_who_disability)), na.rm = TRUE),
+              .groups = 'drop'
             )
           
           merged_df <- skeleton %>%
@@ -1753,6 +1789,10 @@ server <- function(input, output, session) {
           
           in_list[[p]] <- merged_df
         }
+        
+        #print(kbdt)
+        #print(skeleton)
+        #print(merged_df)
         
         ft_list<-gt_group()
         for(p in period){
@@ -1818,7 +1858,7 @@ server <- function(input, output, session) {
               loc_df <- loc_df %>%
                 left_join(ouls, by = c("location" = "pcode")) %>%
                 mutate(location = ifelse(is.na(value), location, Municipality))%>%
-                select(-Province,-pro_code,-District,-Municipality)}
+                select(-Province,-District,-Municipality)}
             
             wide<-loc_df|>
               pivot_wider(names_from= class_gen_f, values_from=indicator)
@@ -2215,17 +2255,21 @@ server <- function(input, output, session) {
       
       date_range <- format(seq.Date(from = start, to = end, by = "month"), "%Y/%m")
       
-      nowym<-paste0(now$date_y,"/",now$date_m)
+      #nowym<-paste0(now$date_y,"/",now$date_m)
       #print(head(kbdt))
       
-      if(all(date_range==nowym)){
-        kbdt<-kbdt %>% 
-          filter(muni_code %in% se_ous)
-      }else{
-        kbdt<-kbdt %>% 
-          filter(muni_code %in% se_ous) %>% 
-          filter(reg_neym %in% date_range)
-      }
+      #if(all(date_range==nowym)){
+      #  kbdt<-kbdt %>% 
+      #    filter(muni_code %in% se_ous)
+      #}else{
+      #  kbdt<-kbdt %>% 
+      #    filter(muni_code %in% se_ous) %>% 
+      #    filter(reg_neym %in% date_range)
+      #}
+      
+      kbdt<-kbdt %>%
+        filter(muni_code %in% se_ous) %>% 
+        filter(reg_neym %in% date_range)
       
       if (nrow(kbdt) == 0) {
         shinyalert("ZERO cases!", "There is no case currently detected/recored in the selected locations and period.", type = "error")
@@ -2443,6 +2487,9 @@ server <- function(input, output, session) {
   ### DHIS2
   ######################################
   
+  login_status <- reactiveVal(FALSE)
+  filled_re <- reactiveVal(FALSE)
+  
   observeEvent(input$d2_login, {
     
     loginDHIS2 <- function(baseurl, username, password) {
@@ -2455,7 +2502,7 @@ server <- function(input, output, session) {
     username <- input$d2_user
     password <- input$d2_pw
     # Call the login function
-    baseurl <- "https://ntd-watch.itg.be/leprosy/" 
+    baseurl <- "https://hmis.gov.np/hmis/"   #"https://ntd-watch.itg.be/leprosy/"  
     success <- loginDHIS2(baseurl, username, password)
     # Show a success or failure message
     if (success) {
@@ -2465,6 +2512,7 @@ server <- function(input, output, session) {
         type = "success"
       )
       
+      login_status(TRUE)
       #updateBox("d2_auth", action = "toggle")
       updateAccordion(id = "d2_conf", selected = 2)
       
@@ -2474,11 +2522,300 @@ server <- function(input, output, session) {
         text = "Login failed. Please check your credentials.",
         type = "error"
       )
+      login_status(FALSE)
     }
   })
   
+  observe({print(paste0(input$d2_year,"/",input$d2_month))})
+  
+  #######################
+  #### Data PREVIEW #####
+  wide_re<-reactiveVal(NULL)
+  
+  observeEvent(input$d2_table, {
+    req(login_status())
+    
+    if (login_status()) {
+      
+      kbdt <- kbdata() %>% 
+        mutate(reg_date := as.Date(reg_nedate),
+               outcome_date := as.Date(out_nedate),
+               age := as.integer(age),
+               reg_year = year(reg_date),
+               reg_mth = format_ISO8601(ymd(reg_date), precision = "ym"),
+               out_mth = format_ISO8601(ymd(outcome_date), precision = "ym")) %>% 
+        mutate(lat=as.numeric(stringr::str_split_i(gps, " " , 1)),
+               lng=as.numeric(stringr::str_split_i(gps, " " , 2)))%>% 
+        mutate(exp=ifelse(leprosyclass=="1",reg_date+months(12),reg_date+months(6))) %>% 
+        mutate(exp :=as.Date(exp)) %>% 
+        mutate(fu=ifelse(exp<=Sys.Date()&treatment_outcome=="4",1,0)) %>%
+        mutate(leprosyclass:=ifelse(leprosyclass=="1","MB","PB")) %>% 
+        mutate(contact_num:=as.integer(contact_num))%>% 
+        filter(is.na(training_practice))
+      
+      period<-paste0(input$d2_year,"/",input$d2_month)
+      
+      se_ous<-as.character(input$ous)
+      
+      intb<-read.csv("indtable.csv")
+      ouls<-read.csv("code_list.csv")
+      ouls$pcode<-as.character(ouls$pcode)
+      ouls<-ouls %>% select(-National)
+      
+      p<-period
+      
+      skeleton <- expand.grid(
+        muni_code = unique(se_ous)[unique(se_ous)%in%ouls$pcode],
+        class_gen_f = c("MB/M", "MB/F", "PB/M", "PB/F"),
+        period = period)
+      
+      temp_df <- kbdt %>%
+        mutate(
+          gen_f = case_when(gender == "1" ~ "Male", gender == "2" ~ "Female"),
+          class_gen = case_when(
+            gender == "1" & leprosyclass == "MB" ~ "MB/M",
+            gender == "2" & leprosyclass == "MB" ~ "MB/F",
+            gender == "1" & leprosyclass == "PB" ~ "PB/M",
+            gender == "2" & leprosyclass == "PB" ~ "PB/F"
+          )
+        ) %>% 
+        mutate(class_gen_f = fct_relevel(class_gen, c("MB/M", "MB/F", "PB/M", "PB/F"))) %>% 
+        group_by(muni_code,class_gen_f) %>% 
+        summarise(
+          ###
+          i_13_1 = sum(reg_mth < p & treatment_outcome == "4", na.rm = TRUE),
+          i_13_2 = sum(reg_mth == p & registered_as == "1", na.rm = TRUE), # NEW
+          i_13_3 = sum(reg_mth == p & registered_as == "4", na.rm = TRUE), # Relapsed
+          i_13_4 = sum(reg_mth == p & registered_as == "3", na.rm = TRUE), # Restart
+          i_13_5 = sum(reg_mth == p & registered_as == "2", na.rm = TRUE), # in
+          i_13_6 = sum(reg_mth == p & registered_as == "5", na.rm = TRUE), # other
+          i_13_7 = i_13_1 + i_13_2 + i_13_3 + i_13_4 + i_13_5 + i_13_6,
+          i_13_8 = i_13_7,
+          ###
+          i_13_9 = sum(out_mth == p & treatment_outcome == "1", na.rm = TRUE), # RFT
+          i_13_10 = sum(out_mth == p & treatment_outcome == "2", na.rm = TRUE), # T-OUT
+          i_13_11 = sum(out_mth == p & treatment_outcome == "5", na.rm = TRUE), # LossFU
+          i_13_12 = sum(out_mth == p & treatment_outcome %in% c("3", "6"), na.rm = TRUE), # Other
+          i_13_13 = i_13_9 + i_13_10 + i_13_11 + i_13_12, # TOTAL DEDUCTED
+          i_13_14 = i_13_7 - i_13_13,
+          ###
+          i_13_15 = sum(reg_mth == p & age < 15 & registered_as == "1", na.rm = TRUE),
+          i_13_16 = sum(reg_mth == p & age < 15 & treatment_outcome == "4", na.rm = TRUE),
+          i_13_17 = sum(reg_mth == p & (skin_smear_test %in% c("1", "2")) & registered_as == "1", na.rm = TRUE),
+          i_13_18 = sum(reg_mth == p & skin_smear_test == "1" & registered_as == "1", na.rm = TRUE),
+          ###
+          i_13_19_1 = sum(reg_mth == p & lepra_reaction == "1", na.rm = TRUE),
+          i_13_19_2 = sum(reg_mth == p & lepra_reaction == "2", na.rm = TRUE),
+          i_13_19_3 = sum(reg_mth == p & lepra_reaction == "3", na.rm = TRUE),
+          ###
+          i_13_21 = sum(reg_mth < p & contact_pep == "0", na.rm = TRUE),
+          i_13_22 = sum(reg_mth == p & contact_pep == "1", na.rm = TRUE),
+          i_13_23 = i_13_21 * 25,
+          i_13_24 = sum(contact_num[reg_mth == p], na.rm = TRUE),
+          i_13_25 = sum(reg_mth == p & (registered_as == "1" & case_detection_method %in% c("3", "5")), na.rm = TRUE),
+          ###
+          d_n_0 = sum(reg_mth == p & (registered_as == "1" & i_who_disability == "0"), na.rm = TRUE),
+          d_n_1 = sum(reg_mth == p & (registered_as == "1" & i_who_disability == "1"), na.rm = TRUE),
+          d_n_2 = sum(reg_mth == p & (registered_as == "1" & i_who_disability == "2"), na.rm = TRUE),
+          d_n_x = sum(reg_mth == p & (registered_as == "1" & is.na(i_who_disability)), na.rm = TRUE),
+          d_nc_0 = sum(reg_mth == p & (registered_as == "1" & age < 15 & i_who_disability == "0"), na.rm = TRUE),
+          d_nc_1 = sum(reg_mth == p & (registered_as == "1" & age < 15 & i_who_disability == "1"), na.rm = TRUE),
+          d_nc_2 = sum(reg_mth == p & (registered_as == "1" & age < 15 & i_who_disability == "2"), na.rm = TRUE),
+          d_nc_x = sum(reg_mth == p & (registered_as == "1" & age < 15 & is.na(i_who_disability)), na.rm = TRUE),
+          .groups = 'drop')
+      
+      merged_df <- skeleton %>%
+        filter(period == p) %>%
+        left_join(temp_df, by = c("muni_code", "class_gen_f")) %>%
+        replace_na(list(
+          i_13_1 = 0, i_13_2 = 0, i_13_3 = 0, i_13_4 = 0, i_13_5 = 0, 
+          i_13_6 = 0, i_13_7 = 0, i_13_8 = 0, i_13_9 = 0,  i_13_10 = 0, i_13_11 = 0, 
+          i_13_12 = 0, i_13_13 = 0, i_13_14 = 0, i_13_15 = 0, i_13_16 = 0, i_13_17 = 0, 
+          i_13_18 = 0, i_13_19_1 = 0, i_13_19_2 = 0, i_13_19_3 = 0, i_13_21 = 0,
+          i_13_22 = 0, i_13_23 = 0, i_13_24 = 0, i_13_25 = 0, d_n_0 = 0, d_n_1 = 0, 
+          d_n_2 = 0, d_n_x = 0, d_nc_0 = 0, d_nc_1 = 0, d_nc_2 = 0, d_nc_x = 0
+        )) |> 
+        select(-period) %>% 
+        rename(location=muni_code)
+      
+      dat<-pivot_longer(merged_df,
+                        cols = -c(location,class_gen_f),
+                        values_to = "value",
+                        names_to = "code")
+      dat<-dat %>% 
+        group_by(location,class_gen_f) %>% 
+        ungroup()
+      
+      load("dval_ind.RData") ###load DHIS2 FORMATTING REFERENCE
+      
+      dval1<-filter(dval_index,class_gen_f!="default")
+      dval2<-filter(dval_index,class_gen_f=="default")
+      
+      dat1<-filter(dat,startsWith(code,"i_"))
+      dat2<-filter(dat,startsWith(code,"d_"))
+      
+      filled1<-left_join(dval1,dat1,by=c("code","class_gen_f"))
+      
+      dat2<-dat2 |> 
+        group_by(code,location) |> 
+        summarise(value=sum(value)) |> 
+        ungroup() |> 
+        mutate(class_gen_f="default")
+      
+      filled2<-left_join(dval2,dat2,by=c("code","class_gen_f"))
+      
+      filled<-bind_rows(filled1,filled2) ####FINAL DATASET
+      filled_re(filled)
+      
+      muni_df <- filled %>% 
+        select(location,names,class_gen_f,value.y)
+      
+      muni_df <- muni_df %>%
+        left_join(ouls, by = c("location" = "pcode")) %>%
+        mutate(location = ifelse(is.na(value.y), location, Municipality))%>%
+        select(-Municipality)
+      
+      wide<-muni_df|>
+        pivot_wider(names_from= class_gen_f, values_from=value.y)
+      
+      order<-c("Province","District","location","names","MB/F","MB/M","PB/F","PB/M","default")
+      wide <- wide[, order] %>% 
+        arrange(location)
+      
+      wide_re(wide)
+      
+      output$municipality_filter_ui <- renderUI({
+        req(wide_re())
+        div(
+          div(tags$label("Filter Municipality", `for` = "municipality-filter")),
+          tags$select(
+            id = "municipality-filter",
+            onchange = "Reactable.setFilter('d2preview-table', 'location', this.value)",
+            tags$option("All", value = ""),
+            lapply(unique(wide_re()$location), function(location) tags$option(location, value = location))
+          )
+        )
+      })
+      
+      
+      output$d2preview <- renderReactable({
+        reactable(wide_re(),
+                  columns = list(
+                    location = colDef(name = "Municipality"),
+                    names = colDef(name = "Indicators"),
+                    `MB/F` = colDef(cell = function(value) {
+                      if (is.na(value)) {
+                        return("NA")
+                      }
+                      return(value)
+                    }),
+                    `MB/M` = colDef(cell = function(value) {
+                      if (is.na(value)) {
+                        return("NA")
+                      }
+                      return(value)
+                    }),
+                    `MB/M` = colDef(cell = function(value) {
+                      if (is.na(value)) {
+                        return("NA")
+                      }
+                      return(value)
+                    }),            
+                    `PB/M` = colDef(cell = function(value) {
+                      if (is.na(value)) {
+                        return("NA")
+                      }
+                      return(value)
+                    }),            
+                    `PB/F` = colDef(cell = function(value) {
+                      if (is.na(value)) {
+                        return("NA")
+                      }
+                      return(value)
+                    }),
+                    default = colDef(name = "Total",
+                                     cell = function(value) {
+                                       if (is.na(value)) {
+                                         return("NA")
+                                       }
+                                       return(value)
+                                     })
+                  ),
+                  filterable = TRUE, minRows = 28,
+                  defaultPageSize = 28,
+                  searchable = TRUE,
+                  paginationType = "simple",
+                  paginateSubRows = TRUE,
+                  resizable = TRUE,
+                  elementId = "d2preview-table" 
+        )
+      })
+      
+    } else {
+      shinyalert(
+        title = "Error",
+        text = "You must be logged in to view the data tables.",
+        type = "info"
+      )
+    }
+    
+  })
   
   
+  ######################
+  #### Data IMPORT ####
+  observeEvent(input$d2_import, {
+    req(login_status(),filled_re())
+    
+    if (login_status()) {
+      
+      baseurl<-"https://hmis.gov.np/hmis/"
+      username <- input$d2_user
+      password <- input$d2_pw
+      
+      loginDHIS2<-function(baseurl,username,password) {
+        url<-paste0(baseurl,"api/me")
+        r<-GET(url,authenticate(username,password))
+        assertthat::assert_that(r$status_code == 200L) }
+      
+      loginDHIS2(baseurl,d2_username,d2_password)
+      
+      filled<-filled_re()
+      
+      dataSet<-"rcs5vhrMJrQ"
+      qt<-paste0(input$d2_year,input$d2_month)
+      output_list<-list()
+      locs<-unique(filled$location)
+      
+      d2ou<-read.csv("d2_ou.csv") ###LOAD DHIS2 OU ID
+      
+      for(loc in locs){
+        uid<-d2ou$id[d2ou$code==loc]
+        
+        url<-paste0(baseurl,
+                    "api/dataValueSets.json?",
+                    "dataSet=",dataSet,
+                    "&period=",qt,
+                    "&orgUnit=",uid)
+
+        output_list[[loc]]<-filled %>% 
+          filter(location==loc) %>% 
+          select(dataElement,categoryOptionCombo,value.y) %>% 
+          rename(value=value.y)
+        
+        httr::POST(url,body=jsonlite::toJSON(output_list[[loc]],auto_unbox = TRUE), httr::content_type_json())
+        
+      }
+      
+    } else {
+      shinyalert(
+        title = "Error",
+        text = "You must be logged in to HMIS/DHIS2 to import data.",
+        type = "info"
+      )
+    }
+  })
+
 }
 
 shinyApp(ui = ui, server = server)
