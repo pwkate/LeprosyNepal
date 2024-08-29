@@ -31,7 +31,7 @@ COPY code_list.csv code_list.csv
 COPY indtable.csv indtable.csv
 COPY www/ www/
 COPY d2_ou.csv d2_ou.csv
-COPY dval_ind.RData
+COPY dval_ind.RData dval_ind.RData
 
 # Restore the R environment with renv
 RUN R -e "renv::restore()"
