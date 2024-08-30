@@ -18,7 +18,6 @@ library(openxlsx)
 library(fpc)
 library(osmdata)
 library(htmltools)
-library(assertthat)
 
 readRenviron(".Renviron")
 
@@ -734,7 +733,7 @@ server <- function(input, output, session) {
     
     # Build authentication header
     url <- paste0(api_url, form_id, "/data/")
-    req <- httr::GET(url = url, authenticate(username, password))
+    req <- httr::GET(url = url, authenticate(username, password),timeout(60))
     
     # Send request and handle response
     response <- httr::content(req, "text", encoding = "UTF-8")
@@ -1653,8 +1652,8 @@ server <- function(input, output, session) {
                  outcome_date := as.Date(out_nedate),
                  age := as.integer(age),
                  reg_year = year(reg_date),
-                 reg_mth = format_ISO8601(ymd(reg_date), precision = "ym"),
-                 out_mth = format_ISO8601(ymd(outcome_date), precision = "ym")) %>% 
+                 reg_mth = format(reg_date,"%Y/%m"),
+                 out_mth = format(outcome_date,"%Y/%m")) %>% 
           mutate(lat=as.numeric(stringr::str_split_i(gps, " " , 1)),
                  lng=as.numeric(stringr::str_split_i(gps, " " , 2)))%>% 
           mutate(exp=ifelse(leprosyclass=="1",reg_date+months(12),reg_date+months(6))) %>% 
@@ -1674,7 +1673,7 @@ server <- function(input, output, session) {
           
         period_re(period)
         
-        #print(period)
+        print(head(kbdt))
         #print(class(period))
         
         grouping_cols <- if (input$replevel == "1") {
@@ -2542,8 +2541,8 @@ server <- function(input, output, session) {
                outcome_date := as.Date(out_nedate),
                age := as.integer(age),
                reg_year = year(reg_date),
-               reg_mth = format_ISO8601(ymd(reg_date), precision = "ym"),
-               out_mth = format_ISO8601(ymd(outcome_date), precision = "ym")) %>% 
+               reg_mth = format(reg_date,"%Y/%m"),
+               out_mth = format(outcome_date,"%Y/%m")) %>% 
         mutate(lat=as.numeric(stringr::str_split_i(gps, " " , 1)),
                lng=as.numeric(stringr::str_split_i(gps, " " , 2)))%>% 
         mutate(exp=ifelse(leprosyclass=="1",reg_date+months(12),reg_date+months(6))) %>% 
@@ -2787,8 +2786,6 @@ server <- function(input, output, session) {
       output_list<-list()
       locs<-unique(filled$location)
       
-      d2ou<-read.csv("d2_ou.csv") ###LOAD DHIS2 OU ID
-      
       for(loc in locs){
         uid<-d2ou$id[d2ou$code==loc]
         
@@ -2815,7 +2812,9 @@ server <- function(input, output, session) {
       )
     }
   })
-
+  
+  
+  
 }
 
 shinyApp(ui = ui, server = server)
