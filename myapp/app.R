@@ -18,6 +18,7 @@ library(openxlsx)
 library(fpc)
 library(osmdata)
 library(htmltools)
+library(DT)
 
 readRenviron(".Renviron")
 
@@ -163,12 +164,21 @@ body<-dashboardBody(
   ),
   tags$script(HTML('
   function convertToNepaliDate(dates, id) {
-    const nepaliDates = dates.map(dateString => {
+   const nepaliDates = dates.map(dateString => {
+      if (dateString === "NA" || !dateString) {
+        return "NA";  // Return "NA" for missing values
+      }
+      
       const date = new Date(dateString);
+      if (isNaN(date)) {
+        return "NA";  // Handle invalid dates as "NA"
+      }
+      
       const nepaliDate = new NepaliDate(date);
       return nepaliDate.format("YYYY/MM/DD");
     });
-    
+
+    // Pass the result back to Shiny
     Shiny.setInputValue(id, nepaliDates);
   }'
   )),
@@ -283,7 +293,7 @@ body<-dashboardBody(
             ),
             fluidRow(
               box(
-                title = "Map of Cases to Follow up", background = "green", solidHeader = T,
+                title = "Map of Cases to Follow up", status = "danger", solidHeader = T,
                 leafletOutput("fumap"),width = 12,
                 id="dash-fumap",
                 collapsible = T,
@@ -292,14 +302,14 @@ body<-dashboardBody(
             ),
             fluidRow(
               box(
-                title = "Leprosy Case Detection (last 5 years)", background = "green", solidHeader = FALSE,
+                title = "Leprosy Case Detection (last 5 years)", background = "teal", solidHeader = T,
                 plotlyOutput("lepcases"),
                 id="dash-lepcases",
                 collapsible = T,
                 closable = F
               ),
               box(
-                title = "Trend of Cases among New (last 5 years)", background = "green", solidHeader = FALSE,
+                title = "Trend of Cases among New (last 5 years)", background = "teal", solidHeader = T,
                 plotlyOutput("amongn"),
                 id="dash-amongn",
                 collapsible = T,
@@ -559,14 +569,17 @@ controlbar <- dashboardControlbar(
   div(style = "
       display: flex; 
       justify-content: center; 
-      align-items: center; 
+      align-items: center;
+      flex-direction: column;
       height: 100%; 
       padding: 0;
       margin: 0;",
       actionBttn("logout", "Logout", icon = icon("sign-out-alt"),
-                 style = "jelly", color="warning",size="sm",
+                 style = "fill", color="warning",size="sm",
                  width = "100px",
-                 block=T) 
+                 block=T),
+      
+      uiOutput("conditionalButtonUI")
   )
 )
 
@@ -581,6 +594,8 @@ server <- function(input, output, session) {
   credentials<-readRDS("users.RDS")
   # Reactive value to track if the user is logged in
   user_logged_in <- reactiveVal(FALSE)
+  
+  user_re<-reactiveVal(NULL)
   
   # Function to handle login
   login_prompt <- function() {
@@ -605,6 +620,7 @@ server <- function(input, output, session) {
     user <- input$username
     pass <- input$password
     if (nrow(credentials[credentials$username == user & credentials$password == pass, ]) > 0) {
+      user_re(user)
       removeModal()  # Close the modal only on successful login
       shinyalert("Login successful!", type = "success")
       user_logged_in(TRUE)  # Set user_logged_in to TRUE on successful login
@@ -793,11 +809,15 @@ server <- function(input, output, session) {
   })
   
   # Also observe changes in login status to trigger data update
+  refresh_timer <- reactiveTimer(30 * 60 * 1000)
   observeEvent(user_logged_in(), {
     if (user_logged_in()) {
+      refresh_timer()
       kbupdate()  # Trigger data update when login status becomes TRUE
     }
   })
+  
+ 
   ######
   
   observe({
@@ -806,6 +826,9 @@ server <- function(input, output, session) {
     kbdt <- kbdata()
     reg_date <- kbdt$registration_date
     out_date <- kbdt$outcome_date
+    
+    reg_date <- ifelse(is.na(reg_date), "NA", reg_date)
+    out_date <- ifelse(is.na(out_date), "NA", out_date)
     
     # Trigger JavaScript after UI is fully rendered
     session$onFlushed(function() {
@@ -828,11 +851,11 @@ server <- function(input, output, session) {
     }
   })
   
-  observeEvent(input$nepaliRegDates, {
+  observeEvent(input$nepaliOutDates, {
     if (!rv$nepaliDatesOutTriggered) {
       rv$nepaliDatesOutTriggered <- TRUE
       kbdt <- kbdata()
-      kbdt$out_nedate<-input$nepaliRegDates
+      kbdt$out_nedate<-input$nepaliOutDates
       kbdt$out_neym<-substring(kbdt$out_nedate,1,7)
       kbdata(kbdt)
       rv$nepaliDatesOutTriggered <- FALSE
@@ -1391,6 +1414,7 @@ server <- function(input, output, session) {
     req(fudt()$exp)
     fu <- fudt()
     exp_date <-as.character(fu$exp)
+    exp_date <- ifelse(is.na(exp_date), "NA", exp_date)
     # Trigger the JavaScript conversion using the current date
     runjs(sprintf("convertToNepaliDate(%s, 'nepaliExpDates')", jsonlite::toJSON(exp_date)))
   })
@@ -1473,7 +1497,7 @@ server <- function(input, output, session) {
       
       if(any(input$futype==0)){type<-1:5}else{type<-input$futype}
       
-      print(class(input$futype))
+      #print(class(input$futype))
       
       fu_slice <- fu %>% 
         filter(cat %in% type) %>% 
@@ -1673,7 +1697,7 @@ server <- function(input, output, session) {
           
         period_re(period)
         
-        print(head(kbdt))
+        #print(head(kbdt))
         #print(class(period))
         
         grouping_cols <- if (input$replevel == "1") {
@@ -1683,7 +1707,7 @@ server <- function(input, output, session) {
         } else {
           c("muni_code", "class_gen_f")
         }
-        print(grouping_cols)
+        #print(grouping_cols)
         
         if (input$replevel == "3") {
           skeleton <- expand.grid(
@@ -2358,9 +2382,9 @@ server <- function(input, output, session) {
         ind<-st_intersects(buffer,mu)
         
         bucn<-buc
-        print(names(bucn))
-        print(nrow(bucn))
-        print(length(unlist(ind)))
+        #print(names(bucn))
+        #print(nrow(bucn))
+        #print(length(unlist(ind)))
         rownames(bucn)<-mu$name[unlist(ind)]
         
         buffer_re(bucn)
@@ -2524,8 +2548,6 @@ server <- function(input, output, session) {
       login_status(FALSE)
     }
   })
-  
-  observe({print(paste0(input$d2_year,"/",input$d2_month))})
   
   #######################
   #### Data PREVIEW #####
@@ -2813,7 +2835,63 @@ server <- function(input, output, session) {
     }
   })
   
+  ###################
+  ### Users Admin
+  ###################
+  is_admin <- function(user) {
+    credentials$Role[credentials$username==user] %in% c("Admin", "admin","ADMIN")
+  }
   
+  
+  output$conditionalButtonUI <- renderUI({
+    req(user_re())
+    if (is_admin(user_re())) {
+      actionBttn("admin", "Users Admin", icon = icon("users"),
+                 style = "fill", color = "success", size = "sm",
+                 width = "100px", block = TRUE)
+    }
+  })
+  
+  observeEvent(input$admin, {
+    showModal(modalDialog(
+      title = "Edit User Credentials",
+      DTOutput("editableTable"),
+      footer = tagList(
+        modalButton("Close"),
+        actionButton("save", "Save Changes")
+      ),
+      size = "l"  # Large size modal to accommodate the table
+    ))
+  })
+  
+  table_data <- reactiveVal(credentials)
+  
+  # Render the editable table inside the modal
+  output$editableTable <- renderDT({
+    datatable(table_data(), editable = TRUE)
+  })
+  
+  # Capture and apply edits to the table
+  observeEvent(input$editableTable_cell_edit, {
+    info <- input$editableTable_cell_edit
+    current_data <- table_data()  # Get the current table data
+    
+    # Apply the edited value to the table
+    current_data[info$row, info$col] <- info$value
+    
+    # Update the reactive table with the modified data
+    table_data(current_data)
+  })
+  
+  # Save changes to the credentials file when "Save Changes" button is clicked
+  observeEvent(input$save, {
+    # Update global credentials variable and save it
+    credentials <<- table_data()  # Use <<- to update the global credentials
+    saveRDS(credentials, "users.rds")  # Save updated credentials to file
+    
+    # Close the modal after saving
+    removeModal()
+  })
   
 }
 
