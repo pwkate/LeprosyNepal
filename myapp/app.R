@@ -530,7 +530,7 @@ body<-dashboardBody(
             fluidRow(
               column(width = 10,
                      box(width = NULL,
-                         collapsible = F,background = "green",
+                         collapsible = F,background = "teal",
                          title = "Map of Case Clustering and Contact Tracing Zone",
                          leafletOutput("dbscanmap")
                      )
@@ -2377,18 +2377,22 @@ server <- function(input, output, session) {
         
         buffer <- st_sf(geometry = buffer_union) %>% st_make_valid()  
         
-        buc<-st_intersection(buffer,mu)
-        
-        ind<-st_intersects(buffer,mu)
-        
-        bucn<-buc
-        #print(names(bucn))
-        #print(nrow(bucn))
-        #print(length(unlist(ind)))
-        rownames(bucn)<-mu$name[unlist(ind)]
-        
-        buffer_re(bucn)
-        
+        if(!is.null(mu)){
+          buc<-st_intersection(buffer,mu)
+          
+          ind<-st_intersects(buffer,mu)
+          
+          bucn<-buc
+          #print(names(bucn))
+          #print(nrow(bucn))
+          #print(length(unlist(ind)))
+          rownames(bucn)<-mu$name[unlist(ind)]
+          
+          buffer_re(bucn)
+        }else{
+          bucn<-buffer
+          buffer_re(bucn)
+        }
         
         if(nrow(db1)>0){dt1<-st_drop_geometry(db1) %>% 
           bind_cols(st_coordinates(db1))}
@@ -2517,7 +2521,7 @@ server <- function(input, output, session) {
     
     loginDHIS2 <- function(baseurl, username, password) {
       url <- paste0(baseurl, "api/me")
-      r <- httr::GET(url,httr::authenticate(username, password))
+      r <- httr::GET(url,httr::authenticate(username, password), timeout(60))
       # Return TRUE if status code is 200, otherwise FALSE
       return(r$status_code == 200L)
     }
