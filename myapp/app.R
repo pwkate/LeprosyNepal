@@ -612,8 +612,72 @@ server <- function(input, output, session) {
     ))
   }
   
+  fetch_kobotoolbox_data <- function() {
+    # Replace with your API details
+    api_url <- "https://kf.kobotoolbox.org/api/v2/assets/"
+    username <- Sys.getenv("KOBO_USERNAME")
+    password <- Sys.getenv("KOBO_PASSWORD")
+    form_id <- Sys.getenv("KOBO_FORM_1")
+    
+    # Build authentication header
+    url <- paste0(api_url, form_id, "/data/")
+    req <- httr::GET(url = url, authenticate(username, password),timeout(60))
+    
+    # Send request and handle response
+    response <- httr::content(req, "text", encoding = "UTF-8")
+    httr::stop_for_status(req)  # Stop if request fails
+    
+    # Parse JSON response with jsonlite
+    data <- jsonlite::fromJSON(response)
+    return(dplyr::select(data$results, c(-`_attachments`, -`_tags`, -`_notes`, -`_validation_status`, -`_geolocation`)))
+  }
+  
+  fetch_outcome_data <- function() {
+    # Replace with your API details
+    api_url <- "https://kf.kobotoolbox.org/api/v2/assets/"
+    username <- Sys.getenv("KOBO_USERNAME")
+    password <- Sys.getenv("KOBO_PASSWORD")
+    form_id <- Sys.getenv("KOBO_FORM_2")
+    
+    # Build authentication header
+    url <- paste0(api_url, form_id, "/data/")
+    req <- httr::GET(url = url, authenticate(username, password))
+    
+    # Send request and handle response
+    response <- httr::content(req, "text", encoding = "UTF-8")
+    httr::stop_for_status(req)  # Stop if request fails
+    
+    # Parse JSON response with jsonlite
+    data <- jsonlite::fromJSON(response)
+    if (length(data$results) == 0) {
+      return(as.data.frame(data$results))
+    } else {
+      return(dplyr::select(data$results, c(-`_attachments`, -`_tags`, -`_notes`, -`_validation_status`, -`_geolocation`)))
+    }
+  }
+  
+  kbdata0 <- reactiveVal(NULL)
+  kbdata <- reactiveVal(NULL)
+  
+  kbupdate <- function() {
+    data <- fetch_kobotoolbox_data()
+    ou_dt <- fetch_outcome_data()
+    if (nrow(ou_dt) != 0) {
+      ou_dt <- filter(ou_dt, skip_logic != 'Yes')
+    }
+    if (nrow(ou_dt) != 0) {
+      merged <- left_join(data, ou_dt, join_by("uid" == "C_uid", "leprosyclass" == "C_leprosyclass"))
+      data$treatment_outcome <- ifelse(!is.na(merged$C_treatment_outcome), merged$C_treatment_outcome, data$treatment_outcome)
+      data$contact_pep <- ifelse(!is.na(merged$C_contact_pep), merged$C_contact_pep, data$contact_pep)
+      data$contact_num <- ifelse(!is.na(merged$C_contact_num), merged$C_contact_num, data$contact_num)
+      data$outcome_date <- ifelse(!is.na(merged$C_outcome_date), merged$C_outcome_date, data$outcome_date)
+    }
+    kbdata0(data)
+  }
+  
   # Call login_prompt on startup
   login_prompt()
+  kbupdate()
   
   # Observe the login button click inside the modal
   observeEvent(input$login, {
@@ -740,72 +804,12 @@ server <- function(input, output, session) {
     }
   })
   
-  fetch_kobotoolbox_data <- function() {
-    # Replace with your API details
-    api_url <- "https://kf.kobotoolbox.org/api/v2/assets/"
-    username <- Sys.getenv("KOBO_USERNAME")
-    password <- Sys.getenv("KOBO_PASSWORD")
-    form_id <- Sys.getenv("KOBO_FORM_1")
-    
-    # Build authentication header
-    url <- paste0(api_url, form_id, "/data/")
-    req <- httr::GET(url = url, authenticate(username, password),timeout(60))
-    
-    # Send request and handle response
-    response <- httr::content(req, "text", encoding = "UTF-8")
-    httr::stop_for_status(req)  # Stop if request fails
-    
-    # Parse JSON response with jsonlite
-    data <- jsonlite::fromJSON(response)
-    return(dplyr::select(data$results, c(-`_attachments`, -`_tags`, -`_notes`, -`_validation_status`, -`_geolocation`)))
-  }
-  
-  fetch_outcome_data <- function() {
-    # Replace with your API details
-    api_url <- "https://kf.kobotoolbox.org/api/v2/assets/"
-    username <- Sys.getenv("KOBO_USERNAME")
-    password <- Sys.getenv("KOBO_PASSWORD")
-    form_id <- Sys.getenv("KOBO_FORM_2")
-    
-    # Build authentication header
-    url <- paste0(api_url, form_id, "/data/")
-    req <- httr::GET(url = url, authenticate(username, password))
-    
-    # Send request and handle response
-    response <- httr::content(req, "text", encoding = "UTF-8")
-    httr::stop_for_status(req)  # Stop if request fails
-    
-    # Parse JSON response with jsonlite
-    data <- jsonlite::fromJSON(response)
-    if (length(data$results) == 0) {
-      return(as.data.frame(data$results))
-    } else {
-      return(dplyr::select(data$results, c(-`_attachments`, -`_tags`, -`_notes`, -`_validation_status`, -`_geolocation`)))
-    }
-  }
-  
-  kbdata <- reactiveVal(NULL)
-  
-  kbupdate <- function() {
-    data <- fetch_kobotoolbox_data()
-    ou_dt <- fetch_outcome_data()
-    if (nrow(ou_dt) != 0) {
-      ou_dt <- filter(ou_dt, skip_logic != 'Yes')
-    }
-    if (nrow(ou_dt) != 0) {
-      merged <- left_join(data, ou_dt, join_by("uid" == "C_uid", "leprosyclass" == "C_leprosyclass"))
-      data$treatment_outcome <- ifelse(!is.na(merged$C_treatment_outcome), merged$C_treatment_outcome, data$treatment_outcome)
-      data$contact_pep <- ifelse(!is.na(merged$C_contact_pep), merged$C_contact_pep, data$contact_pep)
-      data$contact_num <- ifelse(!is.na(merged$C_contact_num), merged$C_contact_num, data$contact_num)
-      data$outcome_date <- ifelse(!is.na(merged$C_outcome_date), merged$C_outcome_date, data$outcome_date)
-    }
-    kbdata(data)
-  }
+ 
   
   # Handle login and data update
   observeEvent(input$login_button, {
     user_logged_in(TRUE)  # Set login status to TRUE after successful login
-    kbupdate()  # Immediately trigger data update after login
+    kbdata(kbdata0())  # Immediately trigger data update after login
   })
   
   # Also observe changes in login status to trigger data update
@@ -813,7 +817,8 @@ server <- function(input, output, session) {
   observeEvent(user_logged_in(), {
     if (user_logged_in()) {
       refresh_timer()
-      kbupdate()  # Trigger data update when login status becomes TRUE
+      kbupdate()
+      kbdata(kbdata0())# Trigger data update when login status becomes TRUE
     }
   })
   
