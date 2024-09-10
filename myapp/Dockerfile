@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     libgeos-dev \
     libproj-dev \
     ca-certificates \
-    libcurl4-openssl-dev
+    libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a directory in the container
