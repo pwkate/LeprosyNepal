@@ -2566,7 +2566,7 @@ server <- function(input, output, session) {
     
     loginDHIS2 <- function(baseurl, username, password) {
       url <- paste0(baseurl, "api/me")
-      r <- httr::GET(url,httr::authenticate(username, password), timeout(60))
+      r <- httr::GET(url,httr::authenticate(username, password), timeout(60),config = httr::config(ssl_verifypeer = FALSE))
       # Return TRUE if status code is 200, otherwise FALSE
       return(r$status_code == 200L)
     }
@@ -2845,7 +2845,7 @@ server <- function(input, output, session) {
       
       loginDHIS2<-function(baseurl,username,password) {
         url<-paste0(baseurl,"api/dataValueSets")
-        r<-GET(url,authenticate(username,password))
+        r<-GET(url,authenticate(username,password),config = httr::config(ssl_verifypeer = FALSE))
         assertthat::assert_that(r$status_code == 200L) }
       
       loginDHIS2(baseurl,d2_username,d2_password)
@@ -2871,7 +2871,8 @@ server <- function(input, output, session) {
           select(dataElement,categoryOptionCombo,value.y) %>% 
           rename(value=value.y)
         
-        httr::POST(url,body=jsonlite::toJSON(output_list[[loc]],auto_unbox = TRUE), httr::content_type_json())
+        httr::POST(url,body=jsonlite::toJSON(output_list[[loc]],auto_unbox = TRUE),httr::content_type_json(),
+                   config = httr::config(ssl_verifypeer = FALSE))
         
       }
       
