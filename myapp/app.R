@@ -695,6 +695,7 @@ server <- function(input, output, session) {
   
   # Continuously check if the user is logged in, and if not, trigger the login modal
   observe({
+    req(input$input$username,input$password)
     if (!user_logged_in()) {
       login_prompt()  # Re-trigger the login modal if the user is not logged in
     }
@@ -1043,7 +1044,9 @@ server <- function(input, output, session) {
       setView(lng = 84.1240, lat = 28.3949, zoom = 7) %>%
       addTiles(group = "OpenStreetMap") %>% 
       addProviderTiles("Esri.WorldImagery",group="Esri.WorldImagery")%>% 
-      addLayersControl(baseGroups = c("OpenStreetMap", "Esri.WorldImagery"))
+      addLayersControl(baseGroups = c("OpenStreetMap", "Esri.WorldImagery")) %>% 
+      addScaleBar(position = "bottomright", options = scaleBarOptions(metric = TRUE, imperial = FALSE))
+    
     
     if (nrow(dt) > 0) {
       l <- l %>%
@@ -1282,7 +1285,9 @@ server <- function(input, output, session) {
     if (nrow(kbdt)==0){
         leaflet() %>%
         setView(lng = 84.1240, lat = 28.3949, zoom = 7) %>% 
-        addTiles()
+        addTiles() %>% 
+        addScaleBar(position = "bottomleft", options = scaleBarOptions(metric = TRUE, imperial = FALSE))
+      
       } else {
           
           kbdt<-kbdt %>% 
@@ -1324,7 +1329,8 @@ server <- function(input, output, session) {
             
             leaflet() %>%
               setView(lng = 84.1240, lat = 28.3949, zoom = 7) %>% 
-              addTiles()
+              addTiles() %>% 
+              addScaleBar(position = "bottomleft", options = scaleBarOptions(metric = TRUE, imperial = FALSE))
             
           }else{
             meanx<-mean(fu$lng)
@@ -1333,7 +1339,8 @@ server <- function(input, output, session) {
             
             l <- leaflet() %>%
               setView(lng = meanx, lat = meany, zoom = 7) %>% 
-              addTiles()
+              addTiles() %>% 
+              addScaleBar(position = "bottomright", options = scaleBarOptions(metric = TRUE, imperial = FALSE))
             
             getColor <- function(cat) {
               sapply(cat, function(x) {
@@ -2220,7 +2227,9 @@ server <- function(input, output, session) {
         setView(lng = 84.1240, lat = 28.3949, zoom = 7) %>% 
         addTiles(group = "OpenStreetMap") %>% 
         addProviderTiles("Esri.WorldImagery",group="Esri.WorldImagery") %>% 
-        addLayersControl(baseGroups = c("OpenStreetMap", "Esri.WorldImagery"))
+        addLayersControl(baseGroups = c("OpenStreetMap", "Esri.WorldImagery")) %>% 
+        addScaleBar(position = "bottomright", options = scaleBarOptions(metric = TRUE, imperial = FALSE))
+      
     }else{
       dbscan_l()
     }
@@ -2447,7 +2456,9 @@ server <- function(input, output, session) {
               data = bucn, fillOpacity = 0, weight = 2, color = "deepskyblue", opacity = 1
             ) %>% 
             addLayersControl(baseGroups = c("OpenStreetMap", "Esri.WorldImagery")) %>%
-            addControl(html = legendHtml, position = "bottomleft")
+            addControl(html = legendHtml, position = "bottomleft") %>% 
+            addScaleBar(position = "bottomright", options = scaleBarOptions(metric = TRUE, imperial = FALSE))
+          
         }else{
           l<-leaflet() %>%
             setView(lng = meanx, lat = meany, zoom = 12) %>% 
@@ -2461,7 +2472,9 @@ server <- function(input, output, session) {
               data = bucn, fillOpacity = 0, weight = 2, color = "deepskyblue", opacity = 1
             ) %>% 
             addLayersControl(baseGroups = c("OpenStreetMap", "Esri.WorldImagery")) %>%
-            addControl(html = legendHtml, position = "bottomleft")
+            addControl(html = legendHtml, position = "bottomleft") %>% 
+            addScaleBar(position = "bottomright", options = scaleBarOptions(metric = TRUE, imperial = FALSE))
+          
         }
         
         dbscan_l(l)
