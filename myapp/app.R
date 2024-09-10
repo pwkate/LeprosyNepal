@@ -591,13 +591,81 @@ ui<-dashboardPage(header,sidebar,body,controlbar,skin = "blue-light")
 
 server <- function(input, output, session) {
   
-  credentials<-readRDS("users.RDS")
+  credentials <- readRDS("users.RDS")
+  
   # Reactive value to track if the user is logged in
   user_logged_in <- reactiveVal(FALSE)
   
-  user_re<-reactiveVal(NULL)
+  # Reactive value to track the logged-in user
+  user_re <- reactiveVal(NULL)
   
-  # Function to handle login
+  # Reactive element to store the data frame (data fetching logic)
+  data_fetched <- reactive({
+    # Fetch and preprocess KoBoToolbox data
+    fetch_kobotoolbox_data <- function() {
+      api_url <- "https://kf.kobotoolbox.org/api/v2/assets/"
+      username <- Sys.getenv("KOBO_USERNAME")
+      password <- Sys.getenv("KOBO_PASSWORD")
+      form_id <- Sys.getenv("KOBO_FORM_1")
+      
+      url <- paste0(api_url, form_id, "/data/")
+      req <- httr::GET(url = url, authenticate(username, password), timeout(60))
+      
+      response <- httr::content(req, "text", encoding = "UTF-8")
+      httr::stop_for_status(req)
+      
+      data <- jsonlite::fromJSON(response)
+      return(dplyr::select(data$results, c(-`_attachments`, -`_tags`, -`_notes`, -`_validation_status`, -`_geolocation`)))
+    }
+    
+    # Fetch and preprocess outcome data
+    fetch_outcome_data <- function() {
+      api_url <- "https://kf.kobotoolbox.org/api/v2/assets/"
+      username <- Sys.getenv("KOBO_USERNAME")
+      password <- Sys.getenv("KOBO_PASSWORD")
+      form_id <- Sys.getenv("KOBO_FORM_2")
+      
+      url <- paste0(api_url, form_id, "/data/")
+      req <- httr::GET(url = url, authenticate(username, password))
+      
+      response <- httr::content(req, "text", encoding = "UTF-8")
+      httr::stop_for_status(req)
+      
+      data <- jsonlite::fromJSON(response)
+      if (length(data$results) == 0) {
+        return(as.data.frame(data$results))
+      } else {
+        return(dplyr::select(data$results, c(-`_attachments`, -`_tags`, -`_notes`, -`_validation_status`, -`_geolocation`)))
+      }
+    }
+    
+    # Perform the data fetching and merging
+    data <- fetch_kobotoolbox_data()
+    ou_dt <- fetch_outcome_data()
+    
+    if (nrow(ou_dt) != 0) {
+      ou_dt <- dplyr::filter(ou_dt, skip_logic != 'Yes')
+    }
+    
+    if (nrow(ou_dt) != 0) {
+      merged <- dplyr::left_join(data, ou_dt, join_by("uid" == "C_uid", "leprosyclass" == "C_leprosyclass"))
+      data$treatment_outcome <- ifelse(!is.na(merged$C_treatment_outcome), merged$C_treatment_outcome, data$treatment_outcome)
+      data$contact_pep <- ifelse(!is.na(merged$C_contact_pep), merged$C_contact_pep, data$contact_pep)
+      data$contact_num <- ifelse(!is.na(merged$C_contact_num), merged$C_contact_num, data$contact_num)
+      data$outcome_date <- ifelse(!is.na(merged$C_outcome_date), merged$C_outcome_date, data$outcome_date)
+    }
+    
+    # Preprocess the dates before the user logs in
+    data$registration_date <- ifelse(is.na(data$registration_date), "NA", data$registration_date)
+    data$outcome_date <- ifelse(is.na(data$outcome_date), "NA", data$outcome_date)
+    
+    return(data)
+  })
+  
+  # Reactive value to store data after login
+  kbdata <- reactiveVal(NULL)
+  
+  # Show login modal when app starts
   login_prompt <- function() {
     showModal(modalDialog(
       title = "Login",
@@ -611,83 +679,40 @@ server <- function(input, output, session) {
       footer = NULL  # No footer, no cancel button
     ))
   }
-  
-  fetch_kobotoolbox_data <- function() {
-    # Replace with your API details
-    api_url <- "https://kf.kobotoolbox.org/api/v2/assets/"
-    username <- Sys.getenv("KOBO_USERNAME")
-    password <- Sys.getenv("KOBO_PASSWORD")
-    form_id <- Sys.getenv("KOBO_FORM_1")
-    
-    # Build authentication header
-    url <- paste0(api_url, form_id, "/data/")
-    req <- httr::GET(url = url, authenticate(username, password),timeout(60))
-    
-    # Send request and handle response
-    response <- httr::content(req, "text", encoding = "UTF-8")
-    httr::stop_for_status(req)  # Stop if request fails
-    
-    # Parse JSON response with jsonlite
-    data <- jsonlite::fromJSON(response)
-    return(dplyr::select(data$results, c(-`_attachments`, -`_tags`, -`_notes`, -`_validation_status`, -`_geolocation`)))
-  }
-  
-  fetch_outcome_data <- function() {
-    # Replace with your API details
-    api_url <- "https://kf.kobotoolbox.org/api/v2/assets/"
-    username <- Sys.getenv("KOBO_USERNAME")
-    password <- Sys.getenv("KOBO_PASSWORD")
-    form_id <- Sys.getenv("KOBO_FORM_2")
-    
-    # Build authentication header
-    url <- paste0(api_url, form_id, "/data/")
-    req <- httr::GET(url = url, authenticate(username, password))
-    
-    # Send request and handle response
-    response <- httr::content(req, "text", encoding = "UTF-8")
-    httr::stop_for_status(req)  # Stop if request fails
-    
-    # Parse JSON response with jsonlite
-    data <- jsonlite::fromJSON(response)
-    if (length(data$results) == 0) {
-      return(as.data.frame(data$results))
-    } else {
-      return(dplyr::select(data$results, c(-`_attachments`, -`_tags`, -`_notes`, -`_validation_status`, -`_geolocation`)))
-    }
-  }
-  
-  kbdata0 <- reactiveVal(NULL)
-  kbdata <- reactiveVal(NULL)
-  
-  kbupdate <- function() {
-    data <- fetch_kobotoolbox_data()
-    ou_dt <- fetch_outcome_data()
-    if (nrow(ou_dt) != 0) {
-      ou_dt <- filter(ou_dt, skip_logic != 'Yes')
-    }
-    if (nrow(ou_dt) != 0) {
-      merged <- left_join(data, ou_dt, join_by("uid" == "C_uid", "leprosyclass" == "C_leprosyclass"))
-      data$treatment_outcome <- ifelse(!is.na(merged$C_treatment_outcome), merged$C_treatment_outcome, data$treatment_outcome)
-      data$contact_pep <- ifelse(!is.na(merged$C_contact_pep), merged$C_contact_pep, data$contact_pep)
-      data$contact_num <- ifelse(!is.na(merged$C_contact_num), merged$C_contact_num, data$contact_num)
-      data$outcome_date <- ifelse(!is.na(merged$C_outcome_date), merged$C_outcome_date, data$outcome_date)
-    }
-    kbdata0(data)
-  }
-  
-  # Call login_prompt on startup
   login_prompt()
-  kbupdate()
   
-  # Observe the login button click inside the modal
+  # Observe the login button click
   observeEvent(input$login, {
     user <- input$username
     pass <- input$password
+    
+    # Validate credentials
     if (nrow(credentials[credentials$username == user & credentials$password == pass, ]) > 0) {
-      user_re(user)
-      removeModal()  # Close the modal only on successful login
+      user_re(user)  # Store the logged-in user
+      removeModal()  # Close the modal on successful login
       shinyalert("Login successful!", type = "success")
-      user_logged_in(TRUE)  # Set user_logged_in to TRUE on successful login
+      user_logged_in(TRUE)  # Set the user as logged in
+      
+      # Pass the pre-fetched and preprocessed data to kbdata after login
+      kbdata(data_fetched())
+      
+      # Use observe() to trigger JavaScript after the data is loaded and only when kbdata is updated
+      observe({
+        req(kbdata())  # Ensure kbdata is not NULL
+        
+        # Get the registration and outcome dates
+        reg_date <- kbdata()$registration_date
+        out_date <- kbdata()$outcome_date
+        
+        # Trigger JavaScript conversion after the UI is fully rendered
+        session$onFlushed(function() {
+          runjs(sprintf("
+          convertToNepaliDate(%s, 'nepaliRegDates');
+          convertToNepaliDate(%s, 'nepaliOutDates');
+        ", jsonlite::toJSON(reg_date), jsonlite::toJSON(out_date)))
+        }, once = TRUE)  # Ensure the code runs only once per flush
+      })
+      
     } else {
       shinyalert("Login failed. Try again.", type = "error")
     }
@@ -695,18 +720,34 @@ server <- function(input, output, session) {
   
   # Continuously check if the user is logged in, and if not, trigger the login modal
   observe({
-    req(input$input$username,input$password)
     if (!user_logged_in()) {
-      login_prompt()  # Re-trigger the login modal if the user is not logged in
+      login_prompt()  # Show login prompt again if not logged in
     }
   })
   
-  observeEvent(input$logout, {
-    shinyalert("You have been logged out.", type = "info")
-    session$reload()
-    
+  # Periodic refresh of data every 30 minutes
+  refresh_timer <- reactiveTimer(30 * 60 * 1000)
+  observe({
+    if (user_logged_in()) {
+      refresh_timer()  # Periodically refresh the data
+      kbdata(data_fetched())  # Store the new data after refresh
+    }
   })
   
+  # Handle logout
+  observeEvent(input$logout, {
+    shinyalert("You have been logged out.", type = "info")
+    session$reload()  # Reload the session on logout
+  })
+  
+  # Render the data table to the user (after login)
+  output$data_table <- renderTable({
+    req(user_logged_in())  # Ensure the user is logged in
+    kbdata()  # Render the data stored in kbdata
+  })
+  
+  
+
   rv <- reactiveValues(
     nepaliDatesNowTriggered = FALSE,
     nepaliDatesRegTriggered = FALSE,
@@ -805,45 +846,28 @@ server <- function(input, output, session) {
     }
   })
   
- 
-  
-  # Handle login and data update
-  observeEvent(input$login_button, {
-    user_logged_in(TRUE)  # Set login status to TRUE after successful login
-    kbdata(kbdata0())  # Immediately trigger data update after login
-  })
-  
-  # Also observe changes in login status to trigger data update
-  refresh_timer <- reactiveTimer(30 * 60 * 1000)
-  observeEvent(user_logged_in(), {
-    if (user_logged_in()) {
-      refresh_timer()
-      kbupdate()
-      kbdata(kbdata0())# Trigger data update when login status becomes TRUE
-    }
-  })
-  
+
  
   ######
   
-  observe({
-    req(kbdata())  # Ensure kbdata is not NULL
+  #observe({
+  #  req(kbdata())  # Ensure kbdata is not NULL
+  #  
+  #  kbdt <- kbdata()
+  #  reg_date <- kbdt$registration_date
+  #  out_date <- kbdt$outcome_date
     
-    kbdt <- kbdata()
-    reg_date <- kbdt$registration_date
-    out_date <- kbdt$outcome_date
-    
-    reg_date <- ifelse(is.na(reg_date), "NA", reg_date)
-    out_date <- ifelse(is.na(out_date), "NA", out_date)
+  #  reg_date <- ifelse(is.na(reg_date), "NA", reg_date)
+  #  out_date <- ifelse(is.na(out_date), "NA", out_date)
     
     # Trigger JavaScript after UI is fully rendered
-    session$onFlushed(function() {
-      runjs(sprintf("
-      convertToNepaliDate(%s, 'nepaliRegDates');
-      convertToNepaliDate(%s, 'nepaliOutDates');
-    ", jsonlite::toJSON(reg_date), jsonlite::toJSON(out_date)))
-    }, once = TRUE)  # Ensure the code runs only once per flush
-  })
+  #  session$onFlushed(function() {
+  #    runjs(sprintf("
+  #    convertToNepaliDate(%s, 'nepaliRegDates');
+  #    convertToNepaliDate(%s, 'nepaliOutDates');
+  #  ", jsonlite::toJSON(reg_date), jsonlite::toJSON(out_date)))
+  #  }, once = TRUE)  # Ensure the code runs only once per flush
+  # })
   
   
   observeEvent(input$nepaliRegDates, {
@@ -870,7 +894,6 @@ server <- function(input, output, session) {
   
 
   ## Data for dashboard analysis ##################################################
-  
   data<-reactive({
     #print(input$ous)
     #print(head(kbdata()))
@@ -969,6 +992,10 @@ server <- function(input, output, session) {
       dt}
     
   })
+  
+  
+  
+  
   
   ################################################################################
   
@@ -2812,12 +2839,12 @@ server <- function(input, output, session) {
     
     if (login_status()) {
       
-      baseurl<-"https://hmis.gov.np/hmis/"
+      baseurl<-"http://hmis.gov.np/hmis/"
       username <- input$d2_user
       password <- input$d2_pw
       
       loginDHIS2<-function(baseurl,username,password) {
-        url<-paste0(baseurl,"api/me")
+        url<-paste0(baseurl,"api/dataValueSets")
         r<-GET(url,authenticate(username,password))
         assertthat::assert_that(r$status_code == 200L) }
       
