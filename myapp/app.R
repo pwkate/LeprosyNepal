@@ -160,7 +160,7 @@ sidebar<-dashboardSidebar(
 body<-dashboardBody(
   useShinyjs(),
   tags$head(
-    tags$script(src = "https://cdn.jsdelivr.net/npm/nepali-date-converter/dist/nepali-date-converter.umd.js")
+    tags$script(src = "nepali-date-converter.umd.js")
   ),
   tags$script(HTML('
   function convertToNepaliDate(dates, id) {
