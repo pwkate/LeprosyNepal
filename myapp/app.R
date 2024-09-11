@@ -2943,29 +2943,32 @@ server <- function(input, output, session) {
     ))
   })
   
-  table_data <- reactiveVal(credentials)
+  cre_data <- reactiveVal(credentials)
+  observe({
+    print(cre_data())
+  })
   
   # Render the editable table inside the modal
-  output$editableTable <- renderDT({
-    datatable(table_data(), editable = TRUE)
+  output$editableTable <- renderDataTable({
+    datatable(cre_data(), editable = TRUE)
   })
   
   # Capture and apply edits to the table
   observeEvent(input$editableTable_cell_edit, {
     info <- input$editableTable_cell_edit
-    current_data <- table_data()  # Get the current table data
+    current_data <- cre_data()  # Get the current table data
     
     # Apply the edited value to the table
     current_data[info$row, info$col] <- info$value
     
     # Update the reactive table with the modified data
-    table_data(current_data)
+    cre_data(current_data)
   })
   
   # Save changes to the credentials file when "Save Changes" button is clicked
   observeEvent(input$save, {
     # Update global credentials variable and save it
-    credentials <<- table_data()  # Use <<- to update the global credentials
+    credentials <<- cre_data()  # Use <<- to update the global credentials
     saveRDS(credentials, "users.rds")  # Save updated credentials to file
     
     # Close the modal after saving
