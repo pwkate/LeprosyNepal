@@ -23,8 +23,8 @@ library(DT)
 readRenviron(".Renviron")
 
 ####Specify the application port
-options(shiny.host = "0.0.0.0")
-options(shiny.port=8080)
+#options(shiny.host = "0.0.0.0")
+#options(shiny.port=8080)
 ###########################
 ou<-read.csv("code_list.csv")
 
@@ -907,7 +907,11 @@ server <- function(input, output, session) {
     #print(input$ous)
     #print(head(kbdata()))
     req(kbdata()$reg_nedate, kbdata()$out_nedate)
-    if (is.null(input$ous) || length(input$ous) == 0) {
+    
+    debouncedous <- debounce(reactive(input$ous), millis = 1000)
+    se_ous <- if (length(debouncedous()) > 0) as.character(debouncedous()) else NULL
+    
+    if (is.null(se_ous)) {
       kbdt <- kbdata() %>% 
         mutate(registration_date = as.Date(registration_date),
                outcome_date = as.Date(outcome_date),
@@ -955,7 +959,7 @@ server <- function(input, output, session) {
     } else{
       
       kbdt <- kbdata()%>%
-        filter(muni_code%in%input$ous) %>% 
+        filter(muni_code%in%se_ous) %>% 
         mutate(registration_date = as.Date(registration_date),
                outcome_date = as.Date(outcome_date),
                age = as.integer(age),
@@ -1015,7 +1019,9 @@ server <- function(input, output, session) {
       newg2d <- sum(dat$registered_as == "1" & dat$i_who_disability == "2", na.rm = TRUE)
       newch <- sum(dat$registered_as == "1" & dat$age <= 14, na.rm = TRUE)
       
-      se_ous <- if (length(input$ous) > 0) as.character(input$ous) else NULL
+      debouncedOus <- debounce(reactive(input$ous), millis = 1000)
+      
+      se_ous <- if (length(debouncedOus()) > 0) as.character(debouncedOus()) else NULL
       dt <- kbdata()
       if (!is.null(dt)) {
         if (is.null(se_ous)) {
@@ -1158,8 +1164,10 @@ server <- function(input, output, session) {
   output$lepcases<-renderPlotly({
     req(kbdata()$reg_nedate, kbdata()$out_nedate)
     
-    se_ous<-as.character(input$ous)
-    if(length(input$ous)==0){
+    debouncedOus <- debounce(reactive(input$ous), millis = 1000)
+    
+    se_ous <- if (length(debouncedOus()) > 0) as.character(debouncedOus()) else NULL
+    if(is.null(se_ous)){
       dt<-kbdata()
     }else{
       dt<-kbdata() %>% 
@@ -1232,9 +1240,11 @@ server <- function(input, output, session) {
   output$amongn<-renderPlotly({
     req(kbdata()$reg_nedate, kbdata()$out_nedate)
     
-    se_ous<-as.character(input$ous)
+    debouncedOus <- debounce(reactive(input$ous), millis = 1000)
     
-    if(length(input$ous)==0){
+    se_ous <- if (length(debouncedOus()) > 0) as.character(debouncedOus()) else NULL
+    
+    if(is.null(se_ous)){
       dt<-kbdata()
     }else{
       dt<-kbdata() %>% 
@@ -1309,7 +1319,9 @@ server <- function(input, output, session) {
   output$fumap <- renderLeaflet({
     req(kbdata()$reg_nedate, kbdata()$out_nedate)
     
-    se_ous<-as.character(input$ous)
+    debouncedOus <- debounce(reactive(input$ous), millis = 1000)
+    
+    se_ous <- if (length(debouncedOus()) > 0) as.character(debouncedOus()) else NULL
     
     kbdt <- kbdata()
     
@@ -1579,9 +1591,9 @@ server <- function(input, output, session) {
       fu_slice<-fu_slice[,c("Registration Number","Registered Date","Province","District","Municipality","muni_code","Ward","Leprosy Class",
                             "Contact & PEP", "Treatment Outcome", "Outcome Date", "Expected RFT Date", "Current Status","Action","Data Collector","Collector Email")]
       
-      se_ous<-as.character(input$ous)
+      se_ous <- if (length(debouncedOus()) > 0) as.character(debouncedOus()) else NULL
       
-      if(length(input$ous)==0){
+      if(is.null(se_ous)){
         fu_slice<-fu_slice %>% 
           select(-muni_code)
         fu_list(fu_slice)
@@ -1609,9 +1621,11 @@ server <- function(input, output, session) {
                                 cat==3~"Contact Tracing + Treatment Follow-up",
                                 cat %in% c(4,5)~"Treatment Follow-up"))
       
-      se_ous<-as.character(input$ous)
+      debouncedOus <- debounce(reactive(input$ous), millis = 1000)
       
-      if(length(input$ous)==0){
+      se_ous <- if (length(debouncedOus()) > 0) as.character(debouncedOus()) else NULL
+      
+      if(is.null(se_ous)){
         fu_gpx
       }else{
         fu_gpx<-fu_gpx %>% 
