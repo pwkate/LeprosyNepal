@@ -662,6 +662,12 @@ server <- function(input, output, session) {
     return(data)
   })
   
+  observe({
+    isolate({
+      data_fetched()
+    })
+  })
+  
   # Reactive value to store data after login
   kbdata <- reactiveVal(NULL)
   
@@ -679,7 +685,10 @@ server <- function(input, output, session) {
       footer = NULL  # No footer, no cancel button
     ))
   }
+  
   login_prompt()
+  
+  #prompt_show<-reactiveVal(TRUE)
   
   # Observe the login button click
   observeEvent(input$login, {
@@ -715,15 +724,16 @@ server <- function(input, output, session) {
       
     } else {
       shinyalert("Login failed. Try again.", type = "error")
+      login_prompt()
     }
   })
   
   # Continuously check if the user is logged in, and if not, trigger the login modal
-  observe({
-    if (!user_logged_in()) {
-      login_prompt()  # Show login prompt again if not logged in
-    }
-  })
+  #observe({
+  #  if (!user_logged_in()) {
+  #    login_prompt()  # Show login prompt again if not logged in
+  #  }
+  #})
   
   # Periodic refresh of data every 30 minutes
   refresh_timer <- reactiveTimer(30 * 60 * 1000)
@@ -745,7 +755,6 @@ server <- function(input, output, session) {
     req(user_logged_in())  # Ensure the user is logged in
     kbdata()  # Render the data stored in kbdata
   })
-  
   
 
   rv <- reactiveValues(
