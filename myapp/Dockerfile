@@ -40,4 +40,4 @@ RUN R -e "renv::restore()"
 EXPOSE 3838
 
 # Run the R Shiny app
-CMD ["R", "-e", "shiny::runApp('/home/shiny-app', host='0.0.0.0', port=3838)"]
+CMD ["R", "-e", "shiny::runApp('/home/shiny-app', host='0.0.0.0', port=8080)"]
