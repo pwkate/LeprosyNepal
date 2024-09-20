@@ -919,6 +919,7 @@ server <- function(input, output, session) {
                reg_year = year(registration_date),
                reg_mth = format_ISO8601(ymd(registration_date), precision = "ym"),
                out_mth = format_ISO8601(ymd(outcome_date), precision = "ym")) %>%
+        mutate(gps:=str_squish(gps)) %>% 
         mutate(lat = as.numeric(stringr::str_split_i(gps, " ", 1)),
                lng = as.numeric(stringr::str_split_i(gps, " ", 2))) %>%
         mutate(exp = ifelse(leprosyclass == "1", registration_date + months(12), registration_date + months(6))) %>%
@@ -966,6 +967,7 @@ server <- function(input, output, session) {
                reg_year = year(registration_date),
                reg_mth = format_ISO8601(ymd(registration_date), precision = "ym"),
                out_mth = format_ISO8601(ymd(outcome_date), precision = "ym")) %>%
+        mutate(gps:=str_squish(gps)) %>% 
         mutate(lat = as.numeric(stringr::str_split_i(gps, " ", 1)),
                lng = as.numeric(stringr::str_split_i(gps, " ", 2))) %>%
         mutate(exp = ifelse(leprosyclass == "1", registration_date + months(12), registration_date + months(6))) %>%
@@ -1345,6 +1347,7 @@ server <- function(input, output, session) {
                    reg_year = year(registration_date),
                    reg_mth = format_ISO8601(ymd(registration_date), precision = "ym"),
                    out_mth = format_ISO8601(ymd(outcome_date), precision = "ym")) %>% 
+            mutate(gps:=str_squish(gps)) %>% 
             mutate(lat=as.numeric(stringr::str_split_i(gps, " " , 1)),
                    lng=as.numeric(stringr::str_split_i(gps, " " , 2)))%>% 
             mutate(exp=ifelse(leprosyclass=="1",registration_date+months(12),registration_date+months(6))) %>% 
@@ -1740,6 +1743,7 @@ server <- function(input, output, session) {
                  reg_year = year(reg_date),
                  reg_mth = format(reg_date,"%Y/%m"),
                  out_mth = format(outcome_date,"%Y/%m")) %>% 
+          mutate(gps:=str_squish(gps)) %>% 
           mutate(lat=as.numeric(stringr::str_split_i(gps, " " , 1)),
                  lng=as.numeric(stringr::str_split_i(gps, " " , 2)))%>% 
           mutate(exp=ifelse(leprosyclass=="1",reg_date+months(12),reg_date+months(6))) %>% 
@@ -2301,6 +2305,7 @@ server <- function(input, output, session) {
                reg_year = year(registration_date),
                reg_mth = format_ISO8601(ymd(registration_date), precision = "ym"),
                out_mth = format_ISO8601(ymd(outcome_date), precision = "ym"))%>% 
+        mutate(gps:=str_squish(gps)) %>% 
         mutate(lat=as.numeric(stringr::str_split_i(gps, " " , 1)),
                lng=as.numeric(stringr::str_split_i(gps, " " , 2)))%>% 
         mutate(exp=ifelse(leprosyclass=="1",registration_date+months(12),registration_date+months(6))) %>% 
@@ -2639,6 +2644,7 @@ server <- function(input, output, session) {
                reg_year = year(reg_date),
                reg_mth = format(reg_date,"%Y/%m"),
                out_mth = format(outcome_date,"%Y/%m")) %>% 
+        mutate(gps:=str_squish(gps)) %>% 
         mutate(lat=as.numeric(stringr::str_split_i(gps, " " , 1)),
                lng=as.numeric(stringr::str_split_i(gps, " " , 2)))%>% 
         mutate(exp=ifelse(leprosyclass=="1",reg_date+months(12),reg_date+months(6))) %>% 
@@ -2918,12 +2924,12 @@ server <- function(input, output, session) {
   ### Users Admin
   ###################
   is_admin <- function(user) {
-    credentials$Role[credentials$username == user] %in% c("Admin", "admin", "ADMIN")
+    credentials$Role[credentials$username==user] %in% c("Admin", "admin","ADMIN")
   }
   
-  # Conditionally render admin button if user is admin
+  
   output$conditionalButtonUI <- renderUI({
-    req(user_re())  # Ensure the user data is available
+    req(user_re())
     if (is_admin(user_re())) {
       actionBttn("admin", "Users Admin", icon = icon("users"),
                  style = "fill", color = "success", size = "sm",
@@ -2931,11 +2937,10 @@ server <- function(input, output, session) {
     }
   })
   
-  # Show modal when the admin button is clicked
   observeEvent(input$admin, {
     showModal(modalDialog(
       title = "Edit User Credentials",
-      DTOutput("editableTable"),  # Correctly wrapped in DTOutput for displaying the DataTable
+      DTOutput("editableTable"),
       footer = tagList(
         modalButton("Close"),
         actionButton("save", "Save Changes")
@@ -2944,31 +2949,30 @@ server <- function(input, output, session) {
     ))
   })
   
-  # Reactive value to store the credentials data
-  cre_data <- reactiveVal(credentials)
+  table_data <- reactiveVal(credentials)
   
-  # Render the editable DataTable inside the modal
+  # Render the editable table inside the modal
   output$editableTable <- renderDT({
-    datatable(cre_data(), editable = TRUE)  # `renderDT` ensures the table is editable
+    datatable(table_data(), editable = TRUE)
   })
   
-  # Capture and apply edits to the DataTable
+  # Capture and apply edits to the table
   observeEvent(input$editableTable_cell_edit, {
-    info <- input$editableTable_cell_edit  # Get the edit info (row, column, value)
-    current_data <- cre_data()  # Get the current data in the table
+    info <- input$editableTable_cell_edit
+    current_data <- table_data()  # Get the current table data
     
-    # Apply the edited value to the appropriate cell
+    # Apply the edited value to the table
     current_data[info$row, info$col] <- info$value
     
-    # Update the reactive value with the modified data
-    cre_data(current_data)
+    # Update the reactive table with the modified data
+    table_data(current_data)
   })
   
-  # Save changes to the credentials file when "Save Changes" is clicked
+  # Save changes to the credentials file when "Save Changes" button is clicked
   observeEvent(input$save, {
-    # Update the global credentials variable and save it to a file
-    credentials <<- cre_data()  # Use <<- to modify the global variable
-    saveRDS(credentials, "users.rds")  # Save updated credentials to an RDS file
+    # Update global credentials variable and save it
+    credentials <<- table_data()  # Use <<- to update the global credentials
+    saveRDS(credentials, "users.rds")  # Save updated credentials to file
     
     # Close the modal after saving
     removeModal()
