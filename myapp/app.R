@@ -141,20 +141,13 @@ header<-dashboardHeader(
   )
 )
 
-#####SIDEBAR###############
-sidebar<-dashboardSidebar(
+
+#####DYNAMIC SIDEBAR######
+sidebar <- dashboardSidebar(
   width = 200,
-  sidebarMenu(
-    id = "tabs",
-    menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
-    menuItem("Follow-up List", tabName = "list", icon = icon("tablets", lib = "font-awesome")),
-    menuItem("Program Indicators", icon = icon("list-ol", lib = "font-awesome"),
-             menuSubItem("Monthly Report",tabName = "report", icon = icon("square-poll-horizontal", lib = "font-awesome")),
-             menuSubItem("DHIS2 Import",tabName = "dhis2",icon=icon("server"))
-    ),
-    menuItem("Case Clustering", tabName = "cluster", icon = icon("magnifying-glass-location", lib = "font-awesome"))
-  )
+  sidebarMenuOutput("dynamic_sidebar") # Output for dynamic sidebar
 )
+##########################
 
 #####BODY###############
 body<-dashboardBody(
@@ -556,6 +549,21 @@ body<-dashboardBody(
                   
               )
             )
+    ),
+    tabItem(tabName = "admin",
+            h2("Edit User Credentials"),
+            DTOutput("editableTable"),
+            hr(),
+            actionButton("save", "Save Changes", icon = icon("save")),
+            hr(),
+            # Button for deleting selected users
+            actionButton("delete_user", "Delete Selected User", icon = icon("user-times")),
+            hr(),
+            # Inputs for adding a new user
+            textInput("new_username", "New Username"),
+            textInput("new_password", "New Password"),
+            textInput("new_role", "Role"),
+            actionButton("add_user", "Add User", icon = icon("user-plus"))
     )
   )
 )
@@ -577,9 +585,7 @@ controlbar <- dashboardControlbar(
       actionBttn("logout", "Logout", icon = icon("sign-out-alt"),
                  style = "fill", color="warning",size="sm",
                  width = "100px",
-                 block=T),
-      
-      uiOutput("conditionalButtonUI")
+                 block=T)
   )
 )
 
@@ -598,6 +604,45 @@ server <- function(input, output, session) {
   
   # Reactive value to track the logged-in user
   user_re <- reactiveVal(NULL)
+  
+  
+  output$dynamic_sidebar <- renderMenu({
+    
+    is_admin <- function(user) {
+      !is.null(user) && credentials$Role[credentials$username==user] %in% c("Admin", "admin","ADMIN")
+    }
+    
+    # Check if the user is logged in
+    if (is.null(user_re())) {
+      # If the user is not logged in, show a basic menu or no menu at all
+      return(sidebarMenu(
+        menuItem("Welcome!", tabName = "login", icon = icon("lock"))
+      ))
+    }
+    
+    
+    menu_items <- list(
+      menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
+      menuItem("Follow-up List", tabName = "list", icon = icon("tablets", lib = "font-awesome")),
+      menuItem("Program Indicators", icon = icon("list-ol", lib = "font-awesome"),
+               menuSubItem("Monthly Report", tabName = "report", icon = icon("square-poll-horizontal", lib = "font-awesome")),
+               menuSubItem("DHIS2 Import", tabName = "dhis2", icon = icon("server"))
+      ),
+      menuItem("Case Clustering", tabName = "cluster", icon = icon("magnifying-glass-location", lib = "font-awesome"))
+    )
+    
+    # If the user is an admin, add the "User Admin" tab
+    if (is_admin(user_re())) {
+      menu_items <- c(
+        menu_items,
+        list(menuItem("User Admin", tabName = "admin", icon = icon("user-shield")))
+      )
+    }
+    
+    # Render the sidebar menu
+    sidebarMenu(id = "tabs", .list = menu_items)
+  })
+  
   
   # Reactive element to store the data frame (data fetching logic)
   data_fetched <- reactive({
@@ -648,14 +693,45 @@ server <- function(input, output, session) {
     }
     
     if (nrow(ou_dt) != 0) {
-      merged <- dplyr::left_join(data, ou_dt, join_by("uid" == "C_uid", "leprosyclass" == "C_leprosyclass"))
-      data$treatment_outcome <- ifelse(!is.na(merged$C_treatment_outcome), merged$C_treatment_outcome, data$treatment_outcome)
-      data$contact_pep <- ifelse(!is.na(merged$C_contact_pep), merged$C_contact_pep, data$contact_pep)
-      data$contact_num <- ifelse(!is.na(merged$C_contact_num), merged$C_contact_num, data$contact_num)
-      data$outcome_date <- ifelse(!is.na(merged$C_outcome_date), merged$C_outcome_date, data$outcome_date)
+      merged <- dplyr::left_join(data, ou_dt, by = c("uid" = "C_uid", "leprosyclass" = "C_leprosyclass"))
     }
     
-    # Preprocess the dates before the user logs in
+    if (nrow(merged) > 0) {
+      # Check and update each column if it exists in the merged data frame
+      if ("begin_group_jjNIXEHNi/C_treatment_outcome" %in% colnames(merged)) {
+        data$treatment_outcome <- ifelse(
+          !is.na(merged$`begin_group_jjNIXEHNi/C_treatment_outcome`), 
+          merged$`begin_group_jjNIXEHNi/C_treatment_outcome`, 
+          data$treatment_outcome
+        )
+      }
+      
+      if ("begin_group_8wi5kYDWp/C_contact_pep" %in% colnames(merged)) {
+        data$contact_pep <- ifelse(
+          !is.na(merged$`begin_group_8wi5kYDWp/C_contact_pep`), 
+          merged$`begin_group_8wi5kYDWp/C_contact_pep`, 
+          data$contact_pep
+        )
+      }
+      
+      if ("begin_group_8wi5kYDWp/C_contact_num" %in% colnames(merged)) {
+        data$contact_num <- ifelse(
+          !is.na(merged$`begin_group_8wi5kYDWp/C_contact_num`), 
+          merged$`begin_group_8wi5kYDWp/C_contact_num`, 
+          data$contact_num
+        )
+      }
+      
+      if ("begin_group_jjNIXEHNi/C_outcome_date" %in% colnames(merged)) {
+        data$outcome_date <- ifelse(
+          !is.na(merged$`begin_group_jjNIXEHNi/C_outcome_date`), 
+          merged$`begin_group_jjNIXEHNi/C_outcome_date`, 
+          data$outcome_date
+        )
+      }
+    }
+    
+   # Preprocess the dates before the user logs in
     data$registration_date <- ifelse(is.na(data$registration_date), "NA", data$registration_date)
     data$outcome_date <- ifelse(is.na(data$outcome_date), "NA", data$outcome_date)
     
@@ -2923,35 +2999,7 @@ server <- function(input, output, session) {
   ###################
   ### Users Admin
   ###################
-  is_admin <- function(user) {
-    credentials$Role[credentials$username==user] %in% c("Admin", "admin","ADMIN")
-  }
-  
-  
-  output$conditionalButtonUI <- renderUI({
-    req(user_re())
-    if (is_admin(user_re())) {
-      actionBttn("admin", "Users Admin", icon = icon("users"),
-                 style = "fill", color = "success", size = "sm",
-                 width = "100px", block = TRUE)
-    }
-  })
-  
-  observeEvent(input$admin, {
-    showModal(modalDialog(
-      title = "Edit User Credentials",
-      DTOutput("editableTable"),
-      footer = tagList(
-        modalButton("Close"),
-        actionButton("save", "Save Changes")
-      ),
-      size = "l"  # Large size modal to accommodate the table
-    ))
-  })
-  
   table_data <- reactiveVal(credentials)
-  
-  # Render the editable table inside the modal
   output$editableTable <- renderDT({
     datatable(table_data(), editable = TRUE)
   })
@@ -2974,9 +3022,61 @@ server <- function(input, output, session) {
     credentials <<- table_data()  # Use <<- to update the global credentials
     saveRDS(credentials, "users.rds")  # Save updated credentials to file
     
-    # Close the modal after saving
-    removeModal()
+    # Show a notification that changes were saved
+    showNotification("Changes saved successfully", type = "message")
   })
+ 
+  # Add a new user when "Add User" button is clicked
+  observeEvent(input$add_user, {
+    # Get the current data
+    current_data <- table_data()
+    
+    # Create a new row for the new user
+    new_user <- data.frame(
+      username = input$new_username,
+      password = input$new_password,
+      Role = input$new_role,
+      stringsAsFactors = FALSE
+    )
+    
+    # Add the new user to the current data
+    updated_data <- rbind(current_data, new_user)
+    
+    # Update the reactive table with the new data
+    table_data(updated_data)
+    
+    # Clear the input fields
+    updateTextInput(session, "new_username", value = "")
+    updatePasswordInput(session, "new_password", value = "")
+    updateSelectInput(session, "new_role", selected = "User")
+    
+    # Show a notification
+    showNotification("User added successfully", type = "message")
+  })
+  
+  # Delete the selected user when "Delete User" button is clicked
+  observeEvent(input$delete_user, {
+    # Get the index of the selected row
+    selected_row <- input$editableTable_rows_selected
+    
+    if (length(selected_row) == 0) {
+      showNotification("Please select a user to delete", type = "error")
+      return()
+    }
+    
+    # Get the current data
+    current_data <- table_data()
+    
+    # Remove the selected row
+    updated_data <- current_data[-selected_row, ]
+    
+    # Update the reactive table with the new data
+    table_data(updated_data)
+    
+    # Show a notification
+    showNotification("User deleted successfully", type = "message")
+  })
+  
   
 }
 
