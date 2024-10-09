@@ -3047,8 +3047,8 @@ server <- function(input, output, session) {
     
     # Clear the input fields
     updateTextInput(session, "new_username", value = "")
-    updatePasswordInput(session, "new_password", value = "")
-    updateSelectInput(session, "new_role", selected = "User")
+    updateTextInput(session, "new_password", value = "")
+    updateTextInput(session, "new_role", value = "")
     
     # Show a notification
     showNotification("User added successfully", type = "message")
