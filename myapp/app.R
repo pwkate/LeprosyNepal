@@ -1670,6 +1670,8 @@ server <- function(input, output, session) {
       fu_slice<-fu_slice[,c("Registration Number","Registered Date","Province","District","Municipality","muni_code","Ward","Leprosy Class",
                             "Contact & PEP", "Treatment Outcome", "Outcome Date", "Expected RFT Date", "Current Status","Action","Data Collector","Collector Email")]
       
+      debouncedOus <- debounce(reactive(input$ous), millis = 1000)
+      
       se_ous <- if (length(debouncedOus()) > 0) as.character(debouncedOus()) else NULL
       
       if(is.null(se_ous)){
