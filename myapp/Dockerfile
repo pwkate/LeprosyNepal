@@ -33,6 +33,9 @@ COPY www/ www/
 COPY d2_ou.csv d2_ou.csv
 COPY dval_ind.RData dval_ind.RData
 
+# Set permissions for the app directory and its files
+RUN chmod -R 777 /home/shiny-app
+
 # Restore the R environment with renv
 RUN R -e "renv::restore()"
 

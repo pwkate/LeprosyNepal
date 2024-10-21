@@ -904,27 +904,36 @@ server <- function(input, output, session) {
     
   })
   
-  observeEvent(input$end_year,{
+  observeEvent(input$end_year, {
     req(now$date_m)
-    choicem<-c("Baishakh"="01",
-               "Jestha"="02",
-               "Ashadh"="03",
-               "Shrawan"="04",
-               "Bhadra"="05",
-               "Ashwin"="06",
-               "Kartik"="07",
-               "Mangsir"="08",
-               "Poush"="09",
-               "Magh"="10",
-               "Falgun"="11",
-               "Chaitra"="12")
     
-    if(input$start_year==now$date_y & input$start_year==input$end_year){
+    # Define month choices
+    choicem <- c("Baishakh" = "01",
+                 "Jestha" = "02",
+                 "Ashadh" = "03",
+                 "Shrawan" = "04",
+                 "Bhadra" = "05",
+                 "Ashwin" = "06",
+                 "Kartik" = "07",
+                 "Mangsir" = "08",
+                 "Poush" = "09",
+                 "Magh" = "10",
+                 "Falgun" = "11",
+                 "Chaitra" = "12")
+    
+    # Case 1: Start year, end year, and current year are the same
+    if (input$start_year == now$date_y & input$start_year == input$end_year) {
+      # Limit months to up to the current month
+      available_months <- choicem[seq(1, as.numeric(now$date_m))]
+      
+      # Update select input with restricted months
       updateSelectInput(session,
                         inputId = "start_month",
-                        choices = choicem[seq(1,which(choicem=="06",1))],
+                        choices = available_months,
                         selected = now$date_m)
-    }else if(input$start_year==input$end_year){
+    }
+    # Case 2: Start and end year are the same (but not necessarily the current year)
+    else if (input$start_year == input$end_year) {
       updateSelectInput(session,
                         inputId = "start_month",
                         choices = choicem[seq(1,which(choicem=="06",1))])
